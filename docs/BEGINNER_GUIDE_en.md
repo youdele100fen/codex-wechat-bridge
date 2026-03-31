@@ -49,6 +49,14 @@ Or use the bridge wrapper:
 codex-wechat setup
 ```
 
+One important clarification:
+
+- you do not need to manually preinstall `https://github.com/Johnixr/claude-code-wechat-channel`
+- you do not need a separate local WeChat ClawBot plugin first
+- for first-time users, running the command above is enough to start
+
+As long as `node`, `npx`, and npm network access are available, this step can download and run `claude-code-wechat-channel` on demand.
+
 After QR login succeeds, the key success marker is:
 
 - `~/.claude/channels/wechat/account.json` exists
@@ -200,6 +208,11 @@ Symptoms:
 
 - `account.json` does not exist
 - `WeChat credentials` fails
+
+Important note:
+
+- “I never installed `claude-code-wechat-channel` before” is not the real problem by itself
+- the real issue is usually `npx`, network access, npm reachability, or an incomplete QR login
 
 Start with:
 

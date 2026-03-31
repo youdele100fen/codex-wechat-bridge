@@ -32,6 +32,14 @@ English docs:
 
 这个插件不会自己创建微信 bot。它依赖的是已经登录成功的 **WeChat ClawBot** 通道。
 
+但这里有一个很重要的细节：
+
+- 你**不需要事先手动安装** `https://github.com/Johnixr/claude-code-wechat-channel`
+- 你**也不需要先单独装一个本地 WeChat ClawBot 插件**
+- 对新手来说，最简单做法就是直接运行 `codex-wechat setup`
+
+因为 `codex-wechat setup` 的真实实现就是调用：
+
 你至少要能完成这一步：
 
 ```bash
@@ -45,6 +53,18 @@ codex-wechat setup
 ```
 
 它内部同样会复用或触发 `claude-code-wechat-channel setup`。
+
+这意味着：
+
+- 第一次使用时，只要本机有 `node`、`npx`，并且网络能正常访问 npm，README 里的流程就可以直接开始
+- 不需要先去手动 clone `Johnixr/claude-code-wechat-channel`
+- 不需要先单独执行额外安装脚本
+
+如果下面这些条件不满足，README 流程就会卡在登录前置这一步：
+
+- `npx` 不可用
+- 网络无法下载 `claude-code-wechat-channel`
+- 微信扫码登录没有真正完成
 
 成功标志：
 
@@ -159,6 +179,14 @@ npx -y claude-code-wechat-channel setup
 ```bash
 codex-wechat setup
 ```
+
+如果你从来没有安装过 `claude-code-wechat-channel`，这本身不是问题。
+
+真正需要检查的是：
+
+- `npx` 是否可用
+- 当前网络是否能正常下载 `claude-code-wechat-channel`
+- 扫码登录是否真的完成
 
 ### 2. `codex-wechat: command not found`
 

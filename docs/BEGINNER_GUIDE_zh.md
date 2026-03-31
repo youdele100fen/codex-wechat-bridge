@@ -47,6 +47,14 @@ npx -y claude-code-wechat-channel setup
 codex-wechat setup
 ```
 
+这里要特别说明：
+
+- 你不需要先手动安装 `https://github.com/Johnixr/claude-code-wechat-channel`
+- 也不需要先额外装一个本地 WeChat ClawBot 插件
+- 对第一次使用的人来说，直接跑上面的命令就可以开始
+
+只要本机有 `node`、`npx`，并且网络能正常访问 npm，这一步就会按需下载并执行 `claude-code-wechat-channel`。
+
 扫码登录后，最关键的成功标志是：
 
 - `~/.claude/channels/wechat/account.json` 已生成
@@ -198,6 +206,11 @@ codex-wechat start
 
 - `account.json` 不存在
 - `WeChat credentials` 不通过
+
+注意：
+
+- “从来没安装过 `claude-code-wechat-channel`” 本身不是问题
+- 真正的问题通常是 `npx`、网络、npm 访问，或扫码登录没有完成
 
 先做：
 

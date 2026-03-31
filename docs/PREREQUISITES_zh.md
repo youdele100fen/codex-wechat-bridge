@@ -17,6 +17,13 @@
 npx -y claude-code-wechat-channel setup
 ```
 
+但这不等于你必须先手动安装：
+
+- GitHub 上的 `Johnixr/claude-code-wechat-channel`
+- 或某个额外的本地 WeChat ClawBot 插件
+
+对大多数新手来说，并不需要先做单独安装。只要本机有 `node`、`npx`，并且网络能访问 npm，桥接就可以在 `setup` 阶段直接拉起这一步。
+
 桥接里的：
 
 ```bash
@@ -36,6 +43,12 @@ npx -y claude-code-wechat-channel setup
 ```
 
 如果这一步能正常开始拉起二维码登录流程，说明你的基础环境已经具备。
+
+这里的关键点是：
+
+- `npx -y` 会按需下载并执行 `claude-code-wechat-channel`
+- 所以第一次使用时，用户不需要先去 GitHub 手动 clone 那个仓库
+- 也不需要先做单独安装，再回头使用 `codex-wechat`
 
 ### Step 2：扫码登录
 
@@ -76,6 +89,7 @@ codex-wechat setup
 
 - `claude-code-wechat-channel setup` 是底层登录动作
 - `codex-wechat setup` 是桥接对这个动作的封装
+- 如果你从未装过 `claude-code-wechat-channel`，`codex-wechat setup` 也照样可以作为第一入口
 
 ## 4. 如果二维码登录失败，看哪里
 
@@ -83,6 +97,7 @@ codex-wechat setup
 
 - 网络是否正常
 - `npx` 是否可用
+- npm 是否可访问
 - 终端是否真的出现了二维码获取提示
 - 手机是否完成了扫码确认
 

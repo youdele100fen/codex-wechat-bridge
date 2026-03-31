@@ -17,6 +17,13 @@ It depends on an already working **WeChat ClawBot channel**. In practice, your m
 npx -y claude-code-wechat-channel setup
 ```
 
+But this does not mean you must manually preinstall:
+
+- the GitHub repo `Johnixr/claude-code-wechat-channel`
+- or some extra local WeChat ClawBot plugin
+
+For most beginners, no separate preinstallation is required. If `node`, `npx`, and normal npm network access are available, the bridge can trigger this step directly during setup.
+
 The bridge command:
 
 ```bash
@@ -36,6 +43,12 @@ npx -y claude-code-wechat-channel setup
 ```
 
 If this starts the QR-code login flow, your base environment is ready.
+
+The important detail is:
+
+- `npx -y` downloads and runs `claude-code-wechat-channel` on demand
+- so first-time users do not need to manually clone that GitHub repo first
+- and they do not need a separate install step before using `codex-wechat`
 
 ### Step 2: scan the QR code
 
@@ -76,6 +89,7 @@ The simplest mental model is:
 
 - `claude-code-wechat-channel setup` is the underlying login flow
 - `codex-wechat setup` is the bridge-friendly wrapper around it
+- if you have never installed `claude-code-wechat-channel` before, `codex-wechat setup` can still be your first entry point
 
 ## 4. If QR login fails, check these first
 
@@ -83,6 +97,7 @@ Start with:
 
 - whether the network is working
 - whether `npx` is available
+- whether npm is reachable
 - whether the terminal really showed the QR login flow
 - whether the phone finished the scan-and-confirm step
 
