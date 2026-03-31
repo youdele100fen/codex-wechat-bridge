@@ -1,0 +1,32 @@
+{
+  "name": "codex-wechat-bridge",
+  "version": "0.3.0",
+  "description": "Bridge Codex Desktop and a WeChat ClawBot account for task notifications and prompt submission.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "codex-wechat-bridge": "./codex-wechat-bridge.mjs",
+    "codex-wechat": "./codex-wechat-bridge.mjs"
+  },
+  "scripts": {
+    "check": "node --check codex-wechat-bridge.mjs && node --check codex-wechat-bridge.test.mjs",
+    "test": "node --test codex-wechat-bridge.test.mjs"
+  },
+  "files": [
+    "codex-wechat-bridge.mjs",
+    "README.md",
+    "LICENSE",
+    "install.sh",
+    "docs"
+  ],
+  "keywords": [
+    "codex",
+    "wechat",
+    "bridge",
+    "desktop-automation",
+    "notification"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
