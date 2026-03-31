@@ -19,20 +19,23 @@ You need at least:
 
 - a Mac
 - Node.js 18 or later
+- `npx`
 - Codex CLI
 - Codex Desktop
-- working WeChat ClawBot login capability
+- working npm network access so WeChat ClawBot login can be started on demand
 
 Basic checks:
 
 ```bash
 node -v
+npx --version
 codex --version
 ```
 
 What you should see now:
 
 - `node -v` prints a version
+- `npx --version` prints a version
 - `codex --version` prints a version
 
 ## Step 1: prepare WeChat ClawBot
@@ -43,17 +46,12 @@ If you have not done this yet, run:
 npx -y claude-code-wechat-channel setup
 ```
 
-Or use the bridge wrapper:
-
-```bash
-codex-wechat setup
-```
-
 One important clarification:
 
 - you do not need to manually preinstall `https://github.com/Johnixr/claude-code-wechat-channel`
 - you do not need a separate local WeChat ClawBot plugin first
-- for first-time users, running the command above is enough to start
+- before the bridge is installed, the command above is the one you can run directly
+- `codex-wechat setup` only becomes available after Step 3 installation
 
 As long as `node`, `npx`, and npm network access are available, this step can download and run `claude-code-wechat-channel` on demand.
 
@@ -84,7 +82,8 @@ If macOS later prompts for Automation, Accessibility, or `System Events`, allow 
 
 What you should see now:
 
-- `macOS Accessibility automation available` passes in `codex-wechat doctor`
+- your terminal host app is allowed in System Settings
+- after Step 5, `codex-wechat doctor` should show `macOS Accessibility automation available` as passing
 
 ## Step 3: install the bridge
 
@@ -191,13 +190,13 @@ Use this order:
 
 This order matters because:
 
-- WeChat prompts are routed into the thread from the most recent notification
-- before the first notification exists, the bridge has no thread target to continue
+- a new WeChat question is routed into the Codex task from the most recent notification
+- before the first notification exists, the bridge has no task target to continue
 
 What you should see now:
 
 - after step 1, WeChat receives the first task notification
-- after step 3, your new WeChat prompt enters that thread
+- after step 3, your new WeChat question enters that task and continues there
 - you do not get an instant chat-style reply; you wait for the next task-complete notification
 
 ## Common problems
@@ -225,6 +224,8 @@ or:
 ```bash
 codex-wechat setup
 ```
+
+If you have not reached Step 3 installation yet, do not use `codex-wechat setup` yet; use the `npx` command above first.
 
 ### 2. `codex-wechat: command not found`
 

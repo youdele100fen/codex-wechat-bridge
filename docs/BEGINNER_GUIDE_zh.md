@@ -17,20 +17,23 @@
 
 - 一台 Mac
 - Node.js 18 或更高版本
+- `npx`
 - Codex CLI
 - Codex Desktop
-- 已经可用的 WeChat ClawBot 登录能力
+- 可以联网访问 npm，以便按需拉起 WeChat ClawBot 登录
 
 先简单检查：
 
 ```bash
 node -v
+npx --version
 codex --version
 ```
 
 你现在应该看到什么：
 
 - `node -v` 能输出版本号
+- `npx --version` 能输出版本号
 - `codex --version` 能输出版本号
 
 ## Step 1：准备 WeChat ClawBot
@@ -41,17 +44,12 @@ codex --version
 npx -y claude-code-wechat-channel setup
 ```
 
-或者直接运行桥接封装命令：
-
-```bash
-codex-wechat setup
-```
-
 这里要特别说明：
 
 - 你不需要先手动安装 `https://github.com/Johnixr/claude-code-wechat-channel`
 - 也不需要先额外装一个本地 WeChat ClawBot 插件
-- 对第一次使用的人来说，直接跑上面的命令就可以开始
+- 在你还没安装本桥接之前，当前能直接运行的就是上面这条 `npx` 命令
+- `codex-wechat setup` 要等你完成 Step 3 安装后才会出现
 
 只要本机有 `node`、`npx`，并且网络能正常访问 npm，这一步就会按需下载并执行 `claude-code-wechat-channel`。
 
@@ -82,7 +80,8 @@ codex-wechat setup
 
 你现在应该看到什么：
 
-- `codex-wechat doctor` 中 `macOS Accessibility automation available` 为通过
+- 当前终端宿主应用已经在系统设置里被允许
+- 等你完成 Step 5 后，再用 `codex-wechat doctor` 看到 `macOS Accessibility automation available` 为通过
 
 ## Step 3：安装插件
 
@@ -189,13 +188,13 @@ codex-wechat start
 
 这样设计的原因是：
 
-- 微信 Prompt 会进入“最近一次通知对应的 Thread”
-- 如果你还没有收到过任何通知，桥接就还不知道该续接哪个 Thread
+- 微信里发来的新问题，会接到“最近一次通知对应的那个 Codex 任务”里继续运行
+- 如果你还没有收到过任何通知，桥接就还不知道该续接哪个任务
 
 你现在应该看到什么：
 
 - 第一步之后，微信收到第一条任务通知
-- 第二步之后，你再发的微信 Prompt 会进入对应 Thread
+- 第二步之后，你再发的微信问题会进入对应任务里继续运行
 - 成功后不会立即收到聊天式回复，而是等待下一条任务完成通知
 
 ## 常见问题
@@ -223,6 +222,8 @@ npx -y claude-code-wechat-channel setup
 ```bash
 codex-wechat setup
 ```
+
+如果你此时还没做到 Step 3 安装桥接，那就先不要运行 `codex-wechat setup`，而是先用上面的 `npx` 命令。
 
 ### 2. `codex-wechat: command not found`
 
@@ -262,7 +263,7 @@ codex-wechat doctor
 - `Recipient binding`
 - `WeChat credentials`
 
-### 5. 微信 Prompt 没真正进入 Codex Thread
+### 5. 微信发出的新问题没真正进入 Codex 的那个任务
 
 重点看：
 

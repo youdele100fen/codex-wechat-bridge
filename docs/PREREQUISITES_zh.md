@@ -32,6 +32,12 @@ codex-wechat setup
 
 内部也是复用或触发这一套流程，然后读取生成好的凭据文件。
 
+但要注意顺序：
+
+- 如果你还没执行 `git clone` 和 `./install.sh`
+- 那这时候通常还**没有** `codex-wechat` 这个命令
+- 所以安装前能直接做的预检查，是 `npx -y claude-code-wechat-channel setup`
+
 ## 2. 如何准备 WeChat ClawBot
 
 ### Step 1：先确认命令可跑
@@ -49,6 +55,7 @@ npx -y claude-code-wechat-channel setup
 - `npx -y` 会按需下载并执行 `claude-code-wechat-channel`
 - 所以第一次使用时，用户不需要先去 GitHub 手动 clone 那个仓库
 - 也不需要先做单独安装，再回头使用 `codex-wechat`
+- 在还没安装桥接之前，优先运行的是这条 `npx` 命令，而不是 `codex-wechat setup`
 
 ### Step 2：扫码登录
 
@@ -89,7 +96,8 @@ codex-wechat setup
 
 - `claude-code-wechat-channel setup` 是底层登录动作
 - `codex-wechat setup` 是桥接对这个动作的封装
-- 如果你从未装过 `claude-code-wechat-channel`，`codex-wechat setup` 也照样可以作为第一入口
+- 如果你已经安装好了本桥接，`codex-wechat setup` 就是最方便的入口
+- 如果你还没安装本桥接，第一入口应该是 `npx -y claude-code-wechat-channel setup`
 
 ## 4. 如果二维码登录失败，看哪里
 
@@ -115,7 +123,7 @@ codex-wechat setup
 - `System Events`
 - Codex Desktop 深链与前台激活
 
-把微信里的 Prompt 粘贴进 Codex Desktop 当前 Thread 输入框，然后真实按下提交。
+把微信里的内容粘贴进 Codex Desktop 当前那个任务的输入框，然后真实按下提交。
 
 所以如果 macOS 不允许这类桌面自动化，微信 Prompt 就无法真正进入 Codex。
 
@@ -156,6 +164,8 @@ codex-wechat setup
 codex-wechat doctor
 ```
 
+如果你这时还没安装本桥接，请先记住这一步；等后面安装完成后，再回来执行 `codex-wechat doctor` 复核。
+
 你应该看到：
 
 - `macOS Accessibility automation available` 为通过
@@ -165,7 +175,7 @@ codex-wechat doctor
 常见症状有：
 
 - `doctor` 中 `macOS Accessibility automation available` 不通过
-- 微信 Prompt 发出后，没有真正进入 Codex Thread
+- 微信里发出的新问题，没有真正进入 Codex 的那个任务窗口
 - Codex 没被拉到前台
 - sender state 里的 `lastError` 提示和桌面提交相关
 

@@ -17,7 +17,7 @@ English docs:
 装好之后，你可以得到两种能力：
 
 - Codex 任务完成后，结果自动发到微信
-- 你在微信里继续发 Prompt，桥接会把它提交回最近一次通知对应的 Codex Thread
+- 你在微信里发新问题后，插件会把这条问题接到你上一次收到通知的那个 Codex 任务里继续运行
 
 这不是一个通用聊天机器人，也不是纯命令行桥接。当前版本依赖：
 
@@ -36,9 +36,8 @@ English docs:
 
 - 你**不需要事先手动安装** `https://github.com/Johnixr/claude-code-wechat-channel`
 - 你**也不需要先单独装一个本地 WeChat ClawBot 插件**
-- 对新手来说，最简单做法就是直接运行 `codex-wechat setup`
-
-因为 `codex-wechat setup` 的真实实现就是调用：
+- 如果你**还没执行过** `git clone` 和 `./install.sh`，这时先**不要运行** `codex-wechat setup`
+- 因为在安装桥接之前，你的系统里通常还没有 `codex-wechat` 这个命令
 
 你至少要能完成这一步：
 
@@ -46,7 +45,7 @@ English docs:
 npx -y claude-code-wechat-channel setup
 ```
 
-如果你更希望让插件帮你调用这一步，也可以直接运行：
+安装完本仓库之后，你再运行：
 
 ```bash
 codex-wechat setup
@@ -56,9 +55,10 @@ codex-wechat setup
 
 这意味着：
 
-- 第一次使用时，只要本机有 `node`、`npx`，并且网络能正常访问 npm，README 里的流程就可以直接开始
+- 第一次使用时，只要本机有 `node`、`npx`，并且网络能正常访问 npm，前置登录就可以直接开始
 - 不需要先去手动 clone `Johnixr/claude-code-wechat-channel`
 - 不需要先单独执行额外安装脚本
+- 但 `codex-wechat setup` 这个命令本身，要等你完成下面的安装步骤后才可用
 
 如果下面这些条件不满足，README 流程就会卡在登录前置这一步：
 
@@ -89,7 +89,8 @@ codex-wechat setup
 
 成功标志：
 
-- `codex-wechat doctor` 中 `macOS Accessibility automation available` 显示通过
+- 现在先把系统权限准备好
+- 等你完成下面的安装步骤后，再用 `codex-wechat doctor` 检查 `macOS Accessibility automation available` 是否通过
 
 详细步骤也在前置文档中：
 
@@ -162,7 +163,7 @@ codex-wechat start
 
 - 微信能收到通知
 - `doctor` 里的 `WeChat credentials` 和 `macOS Accessibility automation available` 为通过
-- 微信发出的新 Prompt 会进入最近一次通知对应的 Codex Thread
+- 你从微信发出的新问题，会接到你刚刚收到通知的那个 Codex 任务里继续运行
 
 ## 常见报错先看哪里
 
@@ -179,6 +180,8 @@ npx -y claude-code-wechat-channel setup
 ```bash
 codex-wechat setup
 ```
+
+这条命令的前提是：你已经完成了上面的 `git clone` 和 `./install.sh`。
 
 如果你从来没有安装过 `claude-code-wechat-channel`，这本身不是问题。
 
@@ -200,7 +203,7 @@ codex-wechat setup
 - 系统弹窗是否被拒绝过
 - 当前是不是在 macOS 上运行
 
-### 4. 微信 Prompt 没真正进入 Codex Thread
+### 4. 微信发出的新问题没真正进入 Codex 的那个任务
 
 优先检查：
 
@@ -222,7 +225,7 @@ codex-wechat setup
 - 仅支持 macOS
 - 微信 Prompt 提交依赖正在运行的 Codex Desktop
 - 依赖 `osascript` 与 `System Events`
-- 微信 Prompt 默认会进入“最近一次通知对应的 Thread”，这个 Thread 可能来自另一个 Project
+- 微信发来的新问题，默认会接到“最近一次通知对应的那个 Codex 任务”里继续运行；这个任务也可能来自另一个 Project
 
 ## 许可证
 

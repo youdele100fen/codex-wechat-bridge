@@ -32,6 +32,12 @@ codex-wechat setup
 
 reuses or triggers that same flow and then reads the generated credentials file.
 
+But order matters:
+
+- if you have not run `git clone` and `./install.sh` yet
+- then you usually do **not** have the `codex-wechat` command yet
+- so before installation, the direct preflight command is `npx -y claude-code-wechat-channel setup`
+
 ## 2. How to prepare WeChat ClawBot
 
 ### Step 1: make sure the setup command can run
@@ -49,6 +55,7 @@ The important detail is:
 - `npx -y` downloads and runs `claude-code-wechat-channel` on demand
 - so first-time users do not need to manually clone that GitHub repo first
 - and they do not need a separate install step before using `codex-wechat`
+- before the bridge is installed, this `npx` command is the one to run first, not `codex-wechat setup`
 
 ### Step 2: scan the QR code
 
@@ -89,7 +96,8 @@ The simplest mental model is:
 
 - `claude-code-wechat-channel setup` is the underlying login flow
 - `codex-wechat setup` is the bridge-friendly wrapper around it
-- if you have never installed `claude-code-wechat-channel` before, `codex-wechat setup` can still be your first entry point
+- once the bridge is installed, `codex-wechat setup` becomes the most convenient entry point
+- before the bridge is installed, the correct first entry point is `npx -y claude-code-wechat-channel setup`
 
 ## 4. If QR login fails, check these first
 
@@ -156,6 +164,8 @@ After granting permission, run:
 codex-wechat doctor
 ```
 
+If the bridge is not installed yet, just remember this verification step for later and run it after installation.
+
 You should see:
 
 - `macOS Accessibility automation available` as passing
@@ -165,7 +175,7 @@ You should see:
 Common symptoms include:
 
 - `macOS Accessibility automation available` fails in `doctor`
-- a WeChat prompt does not actually enter the Codex thread
+- a new WeChat question does not actually enter the target Codex task window
 - Codex does not come to the foreground
 - the sender state `lastError` mentions desktop submission problems
 
