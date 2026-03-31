@@ -5,7 +5,9 @@
 - 如何先准备好 **WeChat ClawBot**
 - 如何事先完成 **macOS Accessibility** 授权
 
-如果这两步没完成，后面的 `codex-wechat setup`、`codex-wechat doctor`、`codex-wechat start` 就算装上了，也很容易卡住。
+这两件事不是“必须先于 `git clone` 完成”的步骤。
+
+更准确地说，它们是你在第一次真正跑通桥接前，最终一定要完成的两项准备。
 
 ## 1. WeChat ClawBot 是什么
 
@@ -34,9 +36,9 @@ codex-wechat setup
 
 但要注意顺序：
 
-- 如果你还没执行 `git clone` 和 `./install.sh`
-- 那这时候通常还**没有** `codex-wechat` 这个命令
-- 所以安装前能直接做的预检查，是 `npx -y claude-code-wechat-channel setup`
+- 你当然可以先 `git clone` 本仓库
+- 真正开始微信登录时，再运行 `codex-wechat setup` 就行
+- `codex-wechat setup` 内部会复用或触发这条 `npx` 登录流程
 
 ## 2. 如何准备 WeChat ClawBot
 
@@ -54,8 +56,8 @@ npx -y claude-code-wechat-channel setup
 
 - `npx -y` 会按需下载并执行 `claude-code-wechat-channel`
 - 所以第一次使用时，用户不需要先去 GitHub 手动 clone 那个仓库
-- 也不需要先做单独安装，再回头使用 `codex-wechat`
-- 在还没安装桥接之前，优先运行的是这条 `npx` 命令，而不是 `codex-wechat setup`
+- 也不需要先做单独安装
+- 对真正照 README 操作的小白来说，更推荐在安装完本桥接后，直接使用 `codex-wechat setup`
 
 ### Step 2：扫码登录
 
@@ -96,8 +98,7 @@ codex-wechat setup
 
 - `claude-code-wechat-channel setup` 是底层登录动作
 - `codex-wechat setup` 是桥接对这个动作的封装
-- 如果你已经安装好了本桥接，`codex-wechat setup` 就是最方便的入口
-- 如果你还没安装本桥接，第一入口应该是 `npx -y claude-code-wechat-channel setup`
+- 对小白用户，推荐直接按 README 顺序：先安装桥接，再运行 `codex-wechat setup`
 
 ## 4. 如果二维码登录失败，看哪里
 
@@ -164,7 +165,7 @@ codex-wechat setup
 codex-wechat doctor
 ```
 
-如果你这时还没安装本桥接，请先记住这一步；等后面安装完成后，再回来执行 `codex-wechat doctor` 复核。
+如果你这时还没安装本桥接，请先记住这一步；等安装完成后，再回来执行 `codex-wechat doctor` 复核。
 
 你应该看到：
 

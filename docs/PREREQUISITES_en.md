@@ -5,7 +5,9 @@ This document covers only two things:
 - how to prepare **WeChat ClawBot**
 - how to grant **macOS Accessibility** permission in advance
 
-If these two prerequisites are not ready, `codex-wechat setup`, `codex-wechat doctor`, and `codex-wechat start` will be much more likely to fail.
+These are not things that must happen before `git clone`.
+
+More precisely, they are the two things you must eventually complete before the bridge can work end to end for the first time.
 
 ## 1. What WeChat ClawBot means here
 
@@ -34,9 +36,9 @@ reuses or triggers that same flow and then reads the generated credentials file.
 
 But order matters:
 
-- if you have not run `git clone` and `./install.sh` yet
-- then you usually do **not** have the `codex-wechat` command yet
-- so before installation, the direct preflight command is `npx -y claude-code-wechat-channel setup`
+- you can absolutely `git clone` this repository first
+- when you are ready to do the WeChat login, run `codex-wechat setup`
+- `codex-wechat setup` internally reuses or triggers the underlying `npx` login flow
 
 ## 2. How to prepare WeChat ClawBot
 
@@ -54,8 +56,8 @@ The important detail is:
 
 - `npx -y` downloads and runs `claude-code-wechat-channel` on demand
 - so first-time users do not need to manually clone that GitHub repo first
-- and they do not need a separate install step before using `codex-wechat`
-- before the bridge is installed, this `npx` command is the one to run first, not `codex-wechat setup`
+- and they do not need any separate preinstallation
+- for users following the README, the recommended path is to install the bridge first and then run `codex-wechat setup`
 
 ### Step 2: scan the QR code
 
@@ -96,8 +98,7 @@ The simplest mental model is:
 
 - `claude-code-wechat-channel setup` is the underlying login flow
 - `codex-wechat setup` is the bridge-friendly wrapper around it
-- once the bridge is installed, `codex-wechat setup` becomes the most convenient entry point
-- before the bridge is installed, the correct first entry point is `npx -y claude-code-wechat-channel setup`
+- for beginners, the recommended path is: install the bridge first, then run `codex-wechat setup`
 
 ## 4. If QR login fails, check these first
 

@@ -4,12 +4,12 @@ This is a step-by-step guide for first-time users.
 
 The flow is:
 
-- prepare the prerequisites
-- install the bridge
-- complete first-time setup
+- download and install the bridge
+- complete the two things required for the first successful run
+- start the bridge
 - run one real end-to-end check
 
-If WeChat ClawBot or macOS Accessibility is not ready yet, start here first:
+If you want the detailed explanation for WeChat ClawBot or macOS permissions, read:
 
 - [Prerequisites](PREREQUISITES_en.md)
 
@@ -38,56 +38,9 @@ What you should see now:
 - `npx --version` prints a version
 - `codex --version` prints a version
 
-## Step 1: prepare WeChat ClawBot
+## Step 1: download and install the bridge
 
-If you have not done this yet, run:
-
-```bash
-npx -y claude-code-wechat-channel setup
-```
-
-One important clarification:
-
-- you do not need to manually preinstall `https://github.com/Johnixr/claude-code-wechat-channel`
-- you do not need a separate local WeChat ClawBot plugin first
-- before the bridge is installed, the command above is the one you can run directly
-- `codex-wechat setup` only becomes available after Step 3 installation
-
-As long as `node`, `npx`, and npm network access are available, this step can download and run `claude-code-wechat-channel` on demand.
-
-After QR login succeeds, the key success marker is:
-
-- `~/.claude/channels/wechat/account.json` exists
-
-What you should see now:
-
-- the terminal says WeChat login succeeded
-- account ID and user ID are shown
-- the local credentials file has been written
-
-## Step 2: grant macOS Accessibility in advance
-
-Go to:
-
-- System Settings
-- Privacy & Security
-- Accessibility
-
-Allow the terminal host app you actually use, for example:
-
-- `Terminal`
-- `iTerm`
-
-If macOS later prompts for Automation, Accessibility, or `System Events`, allow that too.
-
-What you should see now:
-
-- your terminal host app is allowed in System Settings
-- after Step 5, `codex-wechat doctor` should show `macOS Accessibility automation available` as passing
-
-## Step 3: install the bridge
-
-Download and enter the repo:
+Clone the repo first:
 
 ```bash
 git clone https://github.com/youdele100fen/codex-wechat-bridge.git
@@ -110,27 +63,53 @@ What you should see now:
 - the installer prints the next commands
 - your terminal can resolve `codex-wechat`
 
-## Step 4: run `setup`
+## Step 2: complete WeChat ClawBot login
 
-Run:
+Now start the WeChat login step:
 
 ```bash
 codex-wechat setup
 ```
 
-If you want a specific default workspace, you can also run:
+One important clarification:
 
-```bash
-codex-wechat setup --workspace "/path/to/your/project"
-```
+- you do not need to manually preinstall `https://github.com/Johnixr/claude-code-wechat-channel`
+- you do not need a separate local WeChat ClawBot plugin first
+- `codex-wechat setup` will reuse or trigger the underlying `npx -y claude-code-wechat-channel setup` flow automatically
+
+As long as `node`, `npx`, and npm network access are available, this step can download and run `claude-code-wechat-channel` on demand.
+
+After QR login succeeds, the key success marker is:
+
+- `~/.claude/channels/wechat/account.json` exists
 
 What you should see now:
 
-- existing credentials are reused if available
-- otherwise the WeChat ClawBot login flow starts again
-- bridge config is written to `~/.codex/wechat-bridge/config.json`
+- the terminal says WeChat login succeeded
+- account ID and user ID are shown
+- the local credentials file has been written
 
-## Step 5: run `doctor`
+## Step 3: grant macOS Accessibility in advance
+
+Go to:
+
+- System Settings
+- Privacy & Security
+- Accessibility
+
+Allow the terminal host app you actually use, for example:
+
+- `Terminal`
+- `iTerm`
+
+If macOS later prompts for Automation, Accessibility, or `System Events`, allow that too.
+
+What you should see now:
+
+- your terminal host app is allowed in System Settings
+- after Step 4, `codex-wechat doctor` should show `macOS Accessibility automation available` as passing
+
+## Step 4: run `doctor`
 
 Run:
 
@@ -151,7 +130,7 @@ What you should see now:
 - `macOS Accessibility automation available` passes
 - if Codex Desktop is open, `Codex Desktop running` should also pass
 
-## Step 6: send one normal message to the bot first
+## Step 5: send one normal message to the bot first
 
 From your phone, send one normal WeChat message to the bot, for example:
 
@@ -165,7 +144,7 @@ What you should see now:
 
 - after running `codex-wechat doctor` again, `Recipient binding` should pass
 
-## Step 7: start `start`
+## Step 6: start `start`
 
 Run:
 
@@ -180,7 +159,7 @@ What you should see now:
 - the terminal says it is listening for WeChat prompts
 - the terminal says monitor is embedded in the current `start` process
 
-## Step 8: complete the first real validation
+## Step 7: complete the first real validation
 
 Use this order:
 
@@ -216,16 +195,14 @@ Important note:
 Start with:
 
 ```bash
-npx -y claude-code-wechat-channel setup
-```
-
-or:
-
-```bash
 codex-wechat setup
 ```
 
-If you have not reached Step 3 installation yet, do not use `codex-wechat setup` yet; use the `npx` command above first.
+If this fails, then check:
+
+- whether `npx` is available
+- whether npm is reachable
+- whether the QR login actually completed
 
 ### 2. `codex-wechat: command not found`
 

@@ -2,12 +2,12 @@
 
 这是一份按步骤执行的教程。你可以把它理解为：
 
-- 先准备前置条件
-- 再安装插件
-- 再完成首次启动
+- 先下载和安装插件
+- 再完成首次跑通所需的两项准备
+- 再启动桥接
 - 最后做一次真实验收
 
-如果你还没准备好 WeChat ClawBot 或 macOS Accessibility，请先看：
+如果你想单独查看 WeChat ClawBot 或 macOS 权限的详细说明，再看：
 
 - [前置准备（中文）](PREREQUISITES_zh.md)
 
@@ -36,20 +36,45 @@ codex --version
 - `npx --version` 能输出版本号
 - `codex --version` 能输出版本号
 
-## Step 1：准备 WeChat ClawBot
+## Step 1：下载并安装插件
 
-如果你还没做这一步，先运行：
+先下载并进入仓库：
 
 ```bash
-npx -y claude-code-wechat-channel setup
+git clone https://github.com/youdele100fen/codex-wechat-bridge.git
+cd codex-wechat-bridge
+```
+
+再安装命令：
+
+```bash
+./install.sh
+```
+
+安装后可以使用：
+
+- `codex-wechat`
+- `codex-wechat-bridge`
+
+你现在应该看到什么：
+
+- `install.sh` 结束时打印出下一步命令
+- 终端里可以识别 `codex-wechat`
+
+## Step 2：完成 WeChat ClawBot 登录
+
+现在开始处理微信登录。执行：
+
+```bash
+codex-wechat setup
 ```
 
 这里要特别说明：
 
 - 你不需要先手动安装 `https://github.com/Johnixr/claude-code-wechat-channel`
 - 也不需要先额外装一个本地 WeChat ClawBot 插件
-- 在你还没安装本桥接之前，当前能直接运行的就是上面这条 `npx` 命令
-- `codex-wechat setup` 要等你完成 Step 3 安装后才会出现
+- `codex-wechat setup` 会自动复用或触发底层的 `npx -y claude-code-wechat-channel setup`
+- 所以对小白来说，这里直接执行 `codex-wechat setup` 就够了
 
 只要本机有 `node`、`npx`，并且网络能正常访问 npm，这一步就会按需下载并执行 `claude-code-wechat-channel`。
 
@@ -63,7 +88,7 @@ npx -y claude-code-wechat-channel setup
 - 出现账号 ID / 用户 ID
 - 本地凭据文件已经写出
 
-## Step 2：预先授权 macOS Accessibility
+## Step 3：预先授权 macOS Accessibility
 
 进入：
 
@@ -81,54 +106,9 @@ npx -y claude-code-wechat-channel setup
 你现在应该看到什么：
 
 - 当前终端宿主应用已经在系统设置里被允许
-- 等你完成 Step 5 后，再用 `codex-wechat doctor` 看到 `macOS Accessibility automation available` 为通过
+- 等你完成 Step 4 后，再用 `codex-wechat doctor` 看到 `macOS Accessibility automation available` 为通过
 
-## Step 3：安装插件
-
-下载并进入仓库：
-
-```bash
-git clone https://github.com/youdele100fen/codex-wechat-bridge.git
-cd codex-wechat-bridge
-```
-
-安装命令：
-
-```bash
-./install.sh
-```
-
-安装后可以使用：
-
-- `codex-wechat`
-- `codex-wechat-bridge`
-
-你现在应该看到什么：
-
-- `install.sh` 结束时打印出下一步命令
-- 终端里可以识别 `codex-wechat`
-
-## Step 4：运行 `setup`
-
-执行：
-
-```bash
-codex-wechat setup
-```
-
-如果你希望默认工作区就是某个项目目录，也可以：
-
-```bash
-codex-wechat setup --workspace "/path/to/your/project"
-```
-
-你现在应该看到什么：
-
-- 如果本机已有可用凭据，会提示复用
-- 如果需要重新登录，会再次进入 WeChat ClawBot 登录流程
-- 配置文件会写到 `~/.codex/wechat-bridge/config.json`
-
-## Step 5：运行 `doctor`
+## Step 4：运行 `doctor`
 
 执行：
 
@@ -149,7 +129,7 @@ codex-wechat doctor
 - `macOS Accessibility automation available` 为通过
 - 如果 Codex Desktop 已经打开，`Codex Desktop running` 也应通过
 
-## Step 6：先给 bot 发一条普通消息
+## Step 5：先给 bot 发一条普通消息
 
 在手机微信里给 bot 发一条普通消息，例如：
 
@@ -163,7 +143,7 @@ codex-wechat doctor
 
 - 再次运行 `codex-wechat doctor` 时，`Recipient binding` 变成通过
 
-## Step 7：启动 `start`
+## Step 6：启动 `start`
 
 执行：
 
@@ -178,7 +158,7 @@ codex-wechat start
 - 终端打印正在监听 WeChat prompts
 - 终端打印 monitor 已嵌入当前 `start` 进程
 
-## Step 8：完成首轮真实验收
+## Step 7：完成首轮真实验收
 
 请按这个顺序做：
 
@@ -223,7 +203,11 @@ npx -y claude-code-wechat-channel setup
 codex-wechat setup
 ```
 
-如果你此时还没做到 Step 3 安装桥接，那就先不要运行 `codex-wechat setup`，而是先用上面的 `npx` 命令。
+如果 `codex-wechat setup` 在这里失败，优先检查：
+
+- `npx` 是否可用
+- 当前网络是否能正常下载 `claude-code-wechat-channel`
+- 微信扫码登录是否真的完成
 
 ### 2. `codex-wechat: command not found`
 

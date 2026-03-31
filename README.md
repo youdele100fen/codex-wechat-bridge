@@ -26,9 +26,53 @@ English docs:
 - WeChat ClawBot
 - `osascript` + `System Events` 的桌面自动化
 
-## 开始前必须先准备好的 2 个前提
+## 最短上手路径
 
-### 前提 1：先准备好 WeChat ClawBot
+如果你是第一次使用，最简单的顺序就是下面 5 步：
+
+### Step 1：下载插件
+
+```bash
+git clone https://github.com/youdele100fen/codex-wechat-bridge.git
+cd codex-wechat-bridge
+```
+
+这一步对完全没装过 WeChat ClawBot 或 `claude-code-wechat-channel` 的用户也完全可行。
+
+### Step 2：安装命令
+
+```bash
+./install.sh
+```
+
+安装后你可以使用两个等价命令：
+
+- `codex-wechat`
+- `codex-wechat-bridge`
+
+### Step 3：登录或刷新微信通道
+
+```bash
+codex-wechat setup
+```
+
+### Step 4：检查环境
+
+```bash
+codex-wechat doctor
+```
+
+### Step 5：启动桥接
+
+```bash
+codex-wechat start
+```
+
+## 首次真正跑通前，你最终需要完成的 2 件事
+
+下面这两件事不是“必须先于 git clone 完成”，而是你在第一次真正跑通桥接前，最终一定要完成。
+
+### 第 1 件事：完成 WeChat ClawBot 登录
 
 这个插件不会自己创建微信 bot。它依赖的是已经登录成功的 **WeChat ClawBot** 通道。
 
@@ -39,13 +83,13 @@ English docs:
 - 如果你**还没执行过** `git clone` 和 `./install.sh`，这时先**不要运行** `codex-wechat setup`
 - 因为在安装桥接之前，你的系统里通常还没有 `codex-wechat` 这个命令
 
-你至少要能完成这一步：
+真正负责拉起登录的是这一步：
 
 ```bash
 npx -y claude-code-wechat-channel setup
 ```
 
-安装完本仓库之后，你再运行：
+而在你安装完本仓库之后，更推荐直接运行：
 
 ```bash
 codex-wechat setup
@@ -77,7 +121,7 @@ codex-wechat setup
 - [WeChat ClawBot 前置准备（中文）](docs/PREREQUISITES_zh.md)
 - [WeChat ClawBot Prerequisites (English)](docs/PREREQUISITES_en.md)
 
-### 前提 2：先准备好 macOS Accessibility
+### 第 2 件事：完成 macOS Accessibility 授权
 
 因为桥接要用 `osascript` 调用 `System Events`，把微信里的 Prompt 粘贴到 Codex Desktop 输入框中，所以第一次使用前必须先完成辅助功能授权。
 
@@ -97,56 +141,18 @@ codex-wechat setup
 - [前置准备（中文）](docs/PREREQUISITES_zh.md)
 - [Prerequisites (English)](docs/PREREQUISITES_en.md)
 
-## 5 步完成安装与首次启动
-
-### Step 1：下载插件
-
-```bash
-git clone https://github.com/youdele100fen/codex-wechat-bridge.git
-cd codex-wechat-bridge
-```
-
-### Step 2：安装命令
-
-```bash
-./install.sh
-```
-
-安装后你可以使用两个等价命令：
-
-- `codex-wechat`
-- `codex-wechat-bridge`
-
-### Step 3：登录或刷新 WeChat ClawBot 凭据
-
-```bash
-codex-wechat setup
-```
-
-如果你想把默认工作区写成某个项目目录，也可以这样：
+如果你想把默认工作区写成某个项目目录，可以在 Step 3 改用：
 
 ```bash
 codex-wechat setup --workspace "/path/to/your/project"
 ```
 
-### Step 4：运行体检
-
-```bash
-codex-wechat doctor
-```
-
-第一次重点看这几项：
+`doctor` 第一次重点看这几项：
 
 - `WeChat credentials`
 - `Codex Desktop running`
 - `macOS Accessibility automation available`
 - `Monitor status`
-
-### Step 5：启动桥接
-
-```bash
-codex-wechat start
-```
 
 日常使用时，一般只需要保持一个 `codex-wechat start` 进程。
 
