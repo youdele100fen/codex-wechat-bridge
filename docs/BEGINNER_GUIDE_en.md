@@ -1,74 +1,109 @@
 # Codex WeChat Bridge Beginner Guide
 
-This guide is for first-time users who want to go from zero to a working setup where Codex sends WeChat notifications and accepts prompts from WeChat.
+This is a step-by-step guide for first-time users.
 
-## 1. What this tool does
+The flow is:
 
-`codex-wechat-bridge` connects your WeChat bot to Codex Desktop on macOS.
+- prepare the prerequisites
+- install the bridge
+- complete first-time setup
+- run one real end-to-end check
 
-It gives you two main abilities:
+If WeChat ClawBot or macOS Accessibility is not ready yet, start here first:
 
-- send a WeChat notification when a Codex task completes
-- send a new prompt from WeChat into the most recently notified Codex thread
+- [Prerequisites](PREREQUISITES_en.md)
 
-Important limitations:
+## Step 0: confirm the prerequisites
 
-- macOS only
-- Codex Desktop must be running
-- macOS Accessibility permission is required
-- WeChat channel login must already work
-
-## 2. What you need before starting
-
-Please make sure you already have:
+You need at least:
 
 - a Mac
 - Node.js 18 or later
 - Codex CLI
 - Codex Desktop
-- WeChat bot login capability
+- working WeChat ClawBot login capability
 
-You can check the basics with:
+Basic checks:
 
 ```bash
 node -v
 codex --version
 ```
 
-If both commands print a version, you can continue.
+What you should see now:
 
-## 3. Download the tool
+- `node -v` prints a version
+- `codex --version` prints a version
+
+## Step 1: prepare WeChat ClawBot
+
+If you have not done this yet, run:
 
 ```bash
-git clone <repo-url>
+npx -y claude-code-wechat-channel setup
+```
+
+Or use the bridge wrapper:
+
+```bash
+codex-wechat setup
+```
+
+After QR login succeeds, the key success marker is:
+
+- `~/.claude/channels/wechat/account.json` exists
+
+What you should see now:
+
+- the terminal says WeChat login succeeded
+- account ID and user ID are shown
+- the local credentials file has been written
+
+## Step 2: grant macOS Accessibility in advance
+
+Go to:
+
+- System Settings
+- Privacy & Security
+- Accessibility
+
+Allow the terminal host app you actually use, for example:
+
+- `Terminal`
+- `iTerm`
+
+If macOS later prompts for Automation, Accessibility, or `System Events`, allow that too.
+
+What you should see now:
+
+- `macOS Accessibility automation available` passes in `codex-wechat doctor`
+
+## Step 3: install the bridge
+
+Download and enter the repo:
+
+```bash
+git clone https://github.com/youdele100fen/codex-wechat-bridge.git
 cd codex-wechat-bridge
 ```
 
-If you downloaded a ZIP from GitHub instead, unzip it first and enter the extracted folder.
-
-## 4. Install the commands
-
-Run:
+Install the commands:
 
 ```bash
 ./install.sh
 ```
 
-The installer will:
+After installation you can use:
 
-- verify macOS
-- verify the Node.js version
-- verify `codex`, `npx`, and `osascript`
-- install command links into `~/.local/bin/`
-
-After installation, you can use either of these equivalent commands:
-
-- `codex-wechat-bridge`
 - `codex-wechat`
+- `codex-wechat-bridge`
 
-If your terminal still says the command is missing, `~/.local/bin` is probably not in your PATH yet. The installer prints the exact fix.
+What you should see now:
 
-## 5. Log in to the WeChat bot
+- the installer prints the next commands
+- your terminal can resolve `codex-wechat`
+
+## Step 4: run `setup`
 
 Run:
 
@@ -76,33 +111,19 @@ Run:
 codex-wechat setup
 ```
 
-If you want to store a specific default workspace, run it from that project directory or pass:
+If you want a specific default workspace, you can also run:
 
 ```bash
 codex-wechat setup --workspace "/path/to/your/project"
 ```
 
-`setup` will launch the WeChat login flow. Scan the QR code and finish login.
+What you should see now:
 
-Credentials are stored at:
+- existing credentials are reused if available
+- otherwise the WeChat ClawBot login flow starts again
+- bridge config is written to `~/.codex/wechat-bridge/config.json`
 
-- `~/.claude/channels/wechat/account.json`
-
-## 6. Grant macOS Accessibility permission
-
-The bridge pastes WeChat prompts into the Codex Desktop input box, so Accessibility permission is required.
-
-Typical path:
-
-- System Settings
-- Privacy & Security
-- Accessibility
-
-Make sure your terminal and related automation calls are allowed.
-
-Without this permission, WeChat prompts cannot be submitted into the desktop thread.
-
-## 7. Run diagnostics
+## Step 5: run `doctor`
 
 Run:
 
@@ -110,28 +131,34 @@ Run:
 codex-wechat doctor
 ```
 
-Pay special attention to:
+For first-time setup, pay special attention to:
 
-- `Codex CLI`
+- `WeChat credentials`
 - `Codex Desktop running`
 - `macOS Accessibility automation available`
-- `WeChat credentials`
 - `Monitor status`
-- `Recipient binding`
 
-If `Recipient binding` is not ready yet, that usually just means you have not sent the bot your first WeChat message.
+What you should see now:
 
-## 8. Create the first recipient binding
+- `WeChat credentials` passes
+- `macOS Accessibility automation available` passes
+- if Codex Desktop is open, `Codex Desktop running` should also pass
 
-From your phone, send the bot one normal message first, for example:
+## Step 6: send one normal message to the bot first
+
+From your phone, send one normal WeChat message to the bot, for example:
 
 ```text
 hello
 ```
 
-This lets the bridge save your `contextToken`, which is required before it can send notifications back to you.
+This lets the bridge store the sender `contextToken`.
 
-## 9. Start the bridge
+What you should see now:
+
+- after running `codex-wechat doctor` again, `Recipient binding` should pass
+
+## Step 7: start `start`
 
 Run:
 
@@ -139,54 +166,79 @@ Run:
 codex-wechat start
 ```
 
-In normal daily use, `start` already includes the monitor loop, so you usually do not need a separate `monitor` process.
+In normal use, `start` already embeds the monitor loop, so you usually do not need a second `monitor` process.
 
-Recommended habit:
+What you should see now:
 
-- keep exactly one `codex-wechat start` running
-- do not launch multiple competing listeners
+- the terminal says it is listening for WeChat prompts
+- the terminal says monitor is embedded in the current `start` process
 
-## 10. Your first real-use flow
+## Step 8: complete the first real validation
 
-The first setup flow should be:
+Use this order:
 
-1. Finish one real task in Codex on your computer
-2. Wait until WeChat receives a `Codex task complete` notification
-3. Only after that, send the next prompt from WeChat
+1. finish one real Codex task on your computer
+2. wait for one `Codex task complete` notification in WeChat
+3. then send a new prompt from WeChat
 
-If you send a WeChat prompt before any notification has ever arrived, the bridge will reply with a guidance message instead of guessing a thread target.
+This order matters because:
 
-## 11. Daily usage
+- WeChat prompts are routed into the thread from the most recent notification
+- before the first notification exists, the bridge has no thread target to continue
 
-The normal loop is:
+What you should see now:
 
-1. Keep `codex-wechat start` running
-2. Use Codex on your computer as usual
-3. When a task completes, you receive a WeChat notification
-4. Your next WeChat prompt is routed into the thread from the most recent notification
+- after step 1, WeChat receives the first task notification
+- after step 3, your new WeChat prompt enters that thread
+- you do not get an instant chat-style reply; you wait for the next task-complete notification
 
-One important detail:
+## Common problems
 
-- the target may belong to another project if the latest notification came from that other project
+### 1. The ClawBot prerequisite is not complete
 
-This is expected behavior in the current version.
+Symptoms:
 
-## 12. Common problems
+- `account.json` does not exist
+- `WeChat credentials` fails
 
-### 12.1 `codex-wechat: command not found`
-
-Usually your PATH is missing `~/.local/bin`.
-
-Fix:
+Start with:
 
 ```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+npx -y claude-code-wechat-channel setup
 ```
 
-Then reopen the terminal and try again.
+or:
 
-### 12.2 WeChat does not receive notifications
+```bash
+codex-wechat setup
+```
+
+### 2. `codex-wechat: command not found`
+
+Usually your PATH is missing the install location.
+
+Start by re-running:
+
+```bash
+./install.sh
+```
+
+Then follow the PATH instructions printed by the installer.
+
+### 3. Accessibility is missing or granted to the wrong app
+
+Symptoms:
+
+- `macOS Accessibility automation available` fails
+- WeChat prompts do not enter Codex
+
+Check whether you allowed the correct host application:
+
+- `Terminal`
+- `iTerm`
+- or whichever terminal host actually runs the command
+
+### 4. WeChat does not receive notifications
 
 Run:
 
@@ -194,45 +246,17 @@ Run:
 codex-wechat doctor
 ```
 
-Check:
+Focus on:
 
 - `Monitor status`
 - `Recipient binding`
 - `WeChat credentials`
 
-### 12.3 A WeChat prompt does not actually reach Codex
+### 5. A WeChat prompt does not actually enter the Codex thread
 
 Check:
 
 - Codex Desktop is running
-- Accessibility permission is granted
-- you have already received at least one task notification
+- Accessibility passes
+- you have already received the first task notification
 - `lastError` inside `~/.codex/wechat-bridge/senders/*.json`
-
-### 12.4 The target thread switched to another project
-
-That is expected in the current design.
-
-WeChat prompts always go to the most recently notified thread, even if that thread belongs to another project.
-
-## 13. Where state files live
-
-- config: `~/.codex/wechat-bridge/config.json`
-- chat cursor: `~/.codex/wechat-bridge/runtime.json`
-- monitor state: `~/.codex/wechat-bridge/monitor.json`
-- sender state: `~/.codex/wechat-bridge/senders/*.json`
-- WeChat credentials: `~/.claude/channels/wechat/account.json`
-
-## 14. Best health-check command
-
-```bash
-codex-wechat doctor
-```
-
-Run it again whenever:
-
-- you changed WeChat accounts
-- you rebooted the Mac
-- Codex Desktop behaves strangely
-- WeChat notifications stop
-- WeChat prompt submission fails
