@@ -171,6 +171,11 @@ codex-wechat setup --workspace "/path/to/your/project"
 - `doctor` 里的 `WeChat credentials` 和 `macOS Accessibility automation available` 为通过
 - 你从微信发出的新问题，会接到你刚刚收到通知的那个 Codex 任务里继续运行
 
+补充说明：
+
+- 如果你同时在 iPhone 和 iPad 上对同一个最近通知线程发送完全相同的 Prompt，桥接会在短时间窗口内自动去重，避免同一句话被重复提交两次
+- 对于桌面端提交后写入 rollout 较慢的任务，桥接会等待更长时间再判定失败，减少“其实已经成功提交，但微信先收到失败提示”的误报
+
 ## 常见报错先看哪里
 
 ### 1. `account.json` 不存在

@@ -8,7 +8,7 @@ import { spawn, spawnSync } from "node:child_process";
 
 const BRIDGE_NAME = "codex-wechat-bridge";
 const BRIDGE_ALIASES = [BRIDGE_NAME, "codex-wechat"];
-const BRIDGE_VERSION = "0.3.0";
+const BRIDGE_VERSION = "0.3.1";
 const DEFAULT_BASE_URL = "https://ilinkai.weixin.qq.com";
 const BOT_TYPE = "3";
 const MSG_TYPE_USER = 1;
@@ -25,10 +25,12 @@ const INTERNAL_THREAD_MARKERS = [
 ];
 const MAX_NOTIFIED_TURNS = 200;
 const MAX_SENT_DELIVERY_KEYS = 1000;
+const MAX_RECENT_PROMPT_SUBMISSIONS = 20;
 const PROMPT_RESUME_STARTUP_WAIT_MS = 2000;
 const DESKTOP_THREAD_OPEN_SETTLE_MS = 2000;
-const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = 12000;
+const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = 90000;
 const PROMPT_SUBMISSION_POLL_MS = 250;
+const PROMPT_SEMANTIC_DEDUPE_WINDOW_MS = 120000;
 const PROMPT_TARGET_REQUIRED_MESSAGE = "当前还没有可续接的 Codex 任务。请先在 Codex 中完成一次任务并收到通知后，再从微信发送 Prompt。";
 const DEFAULT_CONFIG = {
   workspace: DEFAULT_WORKSPACE,
@@ -334,6 +336,32 @@ function clearSenderPromptTarget(state) {
   return state;
 }
 
+function normalizeRecentPromptSubmission(entry = {}) {
+  return {
+    key: typeof entry?.key === "string" ? entry.key : "",
+    threadId: typeof entry?.threadId === "string" ? entry.threadId : "",
+    cwd: typeof entry?.cwd === "string" ? entry.cwd : "",
+    prompt: typeof entry?.prompt === "string" ? entry.prompt : "",
+    submittedAt: typeof entry?.submittedAt === "string" ? entry.submittedAt : ""
+  };
+}
+
+function normalizeRecentPromptSubmissions(values, nowMs = Date.now()) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const cutoff = nowMs - PROMPT_SEMANTIC_DEDUPE_WINDOW_MS;
+  return values
+    .map((entry) => normalizeRecentPromptSubmission(entry))
+    .filter((entry) => entry.key && entry.threadId && entry.cwd && entry.prompt && entry.submittedAt)
+    .filter((entry) => {
+      const submittedMs = Date.parse(entry.submittedAt);
+      return Number.isFinite(submittedMs) && submittedMs >= cutoff;
+    })
+    .slice(-MAX_RECENT_PROMPT_SUBMISSIONS);
+}
+
 function normalizeSenderState(input, senderId, accountId = "") {
   const safeInput = input && typeof input === "object" ? input : {};
   const state = {
@@ -342,6 +370,7 @@ function normalizeSenderState(input, senderId, accountId = "") {
     contextToken: typeof safeInput.contextToken === "string" ? safeInput.contextToken : "",
     history: Array.isArray(safeInput.history) ? safeInput.history : [],
     recentFingerprints: Array.isArray(safeInput.recentFingerprints) ? safeInput.recentFingerprints : [],
+    recentPromptSubmissions: normalizeRecentPromptSubmissions(safeInput.recentPromptSubmissions),
     lastError: safeInput.lastError && typeof safeInput.lastError === "object" ? safeInput.lastError : null,
     lastNotifiedThreadId: typeof safeInput.lastNotifiedThreadId === "string" ? safeInput.lastNotifiedThreadId : "",
     lastNotifiedCwd: typeof safeInput.lastNotifiedCwd === "string" ? safeInput.lastNotifiedCwd : "",
@@ -357,6 +386,7 @@ function normalizeSenderState(input, senderId, accountId = "") {
     state.contextToken = "";
     state.history = [];
     state.recentFingerprints = [];
+    state.recentPromptSubmissions = [];
     state.lastError = null;
     clearSenderPromptTarget(state);
     return state;
@@ -390,6 +420,64 @@ function currentPromptTarget(state) {
 
 function normalizePromptForRolloutMatch(text) {
   return String(text || "").replace(/\r\n/g, "\n").trim();
+}
+
+function buildSemanticPromptSubmissionKey(senderId, target, prompt) {
+  const normalizedPrompt = normalizePromptForRolloutMatch(prompt);
+  return crypto
+    .createHash("sha1")
+    .update(
+      JSON.stringify({
+        senderId: String(senderId || ""),
+        threadId: String(target?.threadId || ""),
+        prompt: normalizedPrompt
+      })
+    )
+    .digest("hex");
+}
+
+function pruneRecentPromptSubmissions(state, nowMs = Date.now()) {
+  state.recentPromptSubmissions = normalizeRecentPromptSubmissions(state?.recentPromptSubmissions, nowMs);
+  return state.recentPromptSubmissions;
+}
+
+function rememberRecentPromptSubmission(state, target, prompt, submittedAt = new Date().toISOString()) {
+  const key = buildSemanticPromptSubmissionKey(state?.senderId, target, prompt);
+  if (!key) {
+    return "";
+  }
+
+  const submittedMs = Date.parse(submittedAt);
+  const nextEntries = [
+    ...pruneRecentPromptSubmissions(state, Number.isFinite(submittedMs) ? submittedMs : Date.now()).filter(
+      (entry) => entry.key !== key
+    ),
+    {
+      key,
+      threadId: String(target?.threadId || ""),
+      cwd: String(target?.cwd || ""),
+      prompt: normalizePromptForRolloutMatch(prompt),
+      submittedAt
+    }
+  ];
+  state.recentPromptSubmissions = normalizeRecentPromptSubmissions(
+    nextEntries,
+    Number.isFinite(submittedMs) ? submittedMs : Date.now()
+  );
+  return key;
+}
+
+function forgetRecentPromptSubmission(state, key, nowMs = Date.now()) {
+  state.recentPromptSubmissions = pruneRecentPromptSubmissions(state, nowMs).filter((entry) => entry.key !== key);
+}
+
+function hasRecentPromptSubmission(state, key, nowMs = Date.now()) {
+  return pruneRecentPromptSubmissions(state, nowMs).some((entry) => entry.key === key);
+}
+
+function shouldRetainRecentPromptSubmission(error) {
+  const stage = typeof error?.bridgeStage === "string" ? error.bridgeStage : "";
+  return stage === "desktop-confirm-user-message" || stage === "desktop-confirm-task-started";
 }
 
 function buildDesktopThreadOpenArgs(deepLink) {
@@ -479,6 +567,7 @@ function createBridgeError(stage, message) {
 }
 
 function buildPromptResumeErrorState(target, error) {
+  const resumeFailure = classifyResumeFailure(error);
   return {
     stage:
       typeof error?.bridgeStage === "string" && error.bridgeStage
@@ -488,6 +577,7 @@ function buildPromptResumeErrorState(target, error) {
     threadId: typeof target?.threadId === "string" ? target.threadId : "",
     cwd: typeof target?.cwd === "string" ? target.cwd : "",
     project: displayProjectLabel(target?.cwd),
+    kind: resumeFailure.kind,
     message: String(error)
   };
 }
@@ -508,10 +598,10 @@ function classifyResumeFailure(error) {
     return { kind: "desktop submit failed", detail: message };
   }
   if (stage === "desktop-confirm-user-message") {
-    return { kind: "desktop submission not observed in rollout", detail: message };
+    return { kind: "slow submission timeout before rollout confirmation", detail: message };
   }
   if (stage === "desktop-confirm-task-started") {
-    return { kind: "desktop task start not observed", detail: message };
+    return { kind: "slow submission timeout before task start", detail: message };
   }
   if (message.includes("target workspace does not exist")) {
     return { kind: "target workspace missing", detail: message };
@@ -968,6 +1058,7 @@ async function observePromptSubmission(thread, prompt, startOffset) {
   let offset = startOffset;
   let sawMatchingUserMessage = false;
   let sawTaskStarted = false;
+  let lastObservedAt = "";
   const deadline = Date.now() + PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS;
 
   while (Date.now() <= deadline) {
@@ -985,11 +1076,13 @@ async function observePromptSubmission(thread, prompt, startOffset) {
 
     const { lines, nextOffset } = readJsonlAppend(rolloutPath, offset);
     offset = nextOffset;
+    lastObservedAt = new Date().toISOString();
 
     for (const record of lines) {
       if (record?.type !== "event_msg" || !record.payload) {
         continue;
       }
+      lastObservedAt = typeof record?.timestamp === "string" ? record.timestamp : lastObservedAt;
       if (record.payload.type === "task_started") {
         sawTaskStarted = true;
       }
@@ -1011,13 +1104,13 @@ async function observePromptSubmission(thread, prompt, startOffset) {
   if (!sawMatchingUserMessage) {
     throw createBridgeError(
       "desktop-confirm-user-message",
-      "did not observe matching user_message in rollout after desktop submission"
+      `did not observe matching user_message in rollout after desktop submission (matching_user_message=${sawMatchingUserMessage}; task_started=${sawTaskStarted}; last_observed_at=${lastObservedAt || "none"}; timeout_ms=${PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS})`
     );
   }
 
   throw createBridgeError(
     "desktop-confirm-task-started",
-    "observed matching user_message but did not observe task_started in rollout after desktop submission"
+    `observed matching user_message but did not observe task_started in rollout after desktop submission (matching_user_message=${sawMatchingUserMessage}; task_started=${sawTaskStarted}; last_observed_at=${lastObservedAt || "none"}; timeout_ms=${PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS})`
   );
 }
 
@@ -1975,6 +2068,18 @@ async function processIncomingMessage(config, credentials, message) {
     return;
   }
 
+  const target = currentPromptTarget(state);
+  if (target) {
+    const semanticPromptKey = buildSemanticPromptSubmissionKey(senderId, target, text);
+    if (hasRecentPromptSubmission(state, semanticPromptKey)) {
+      state.lastError = null;
+      state.recentFingerprints = [...state.recentFingerprints, fingerprint].slice(-config.maxRecentFingerprints);
+      saveSenderState(senderId, state, credentials.accountId);
+      log(`skip semantic duplicate prompt from ${senderId} for desktop thread ${target.threadId}`);
+      return;
+    }
+  }
+
   state.history = pushHistory(
     state.history,
     { role: "user", text, at: new Date().toISOString() },
@@ -1983,7 +2088,6 @@ async function processIncomingMessage(config, credentials, message) {
 
   log(`received message from ${senderId}: ${text.slice(0, 80)}`);
 
-  const target = currentPromptTarget(state);
   if (!target) {
     state.lastError = null;
     state.recentFingerprints = [...state.recentFingerprints, fingerprint].slice(-config.maxRecentFingerprints);
@@ -2015,6 +2119,7 @@ async function processIncomingMessage(config, credentials, message) {
     return;
   }
 
+  const promptSubmissionKey = rememberRecentPromptSubmission(state, target, text);
   try {
     await runCodexResumePrompt(config, target, text);
     state.lastError = null;
@@ -2023,6 +2128,9 @@ async function processIncomingMessage(config, credentials, message) {
     log(`submitted prompt for ${senderId} to desktop thread ${target.threadId}`);
   } catch (error) {
     const resumeFailure = classifyResumeFailure(error);
+    if (promptSubmissionKey && !shouldRetainRecentPromptSubmission(error)) {
+      forgetRecentPromptSubmission(state, promptSubmissionKey);
+    }
     state.lastError = buildPromptResumeErrorState(target, error);
     state.recentFingerprints = [...state.recentFingerprints, fingerprint].slice(-config.maxRecentFingerprints);
     saveSenderState(senderId, state, credentials.accountId);

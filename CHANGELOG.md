@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-03-31
+
+- fixed duplicate prompt submission when the same sender sends the same prompt from multiple devices into the same target thread
+- extended desktop rollout confirmation so slower successful submissions are not reported as false failures too early
+- aligned the public repository with the latest production bridge code
+
 ## 0.3.0 - 2026-03-31
 
 - prepared the package for public GitHub sharing

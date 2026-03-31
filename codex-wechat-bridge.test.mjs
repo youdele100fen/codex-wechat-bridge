@@ -62,6 +62,7 @@ function senderStateStoreReplacements() {
     contextToken: "",
     history: [],
     recentFingerprints: [],
+    recentPromptSubmissions: [],
     lastError: null,
     lastNotifiedThreadId: "",
     lastNotifiedCwd: "",
@@ -804,7 +805,7 @@ const spawnSync = (...args) => globalThis.__bridgeSpawnSyncMock(...args);`
 `
       ],
       [
-        /const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = 12000;/,
+        /const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = \d+;/,
         "const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = 20;"
       ],
       [
@@ -1134,4 +1135,261 @@ test("processIncomingMessage stores desktop submission failure context and sends
   assert.equal(savedState.lastError?.project, "project-b");
   assert.match(savedState.lastError?.message || "", /matching user_message/);
   assert.match(globalThis.__bridgeSentResumeFailureTexts[0]?.text || "", /Project：project-b/);
+});
+
+test("processIncomingMessage suppresses same prompt repeated across devices for the same target thread", async () => {
+  const bridge = await loadBridgeForTests({
+    replacements: [
+      ...senderStateStoreReplacements(),
+      [
+        /async function runCodexResumePrompt\(config, target, prompt\) \{[\s\S]*?\n\}/,
+        `async function runCodexResumePrompt(config, target, prompt) {
+  globalThis.__bridgeResumeCalls = globalThis.__bridgeResumeCalls || [];
+  globalThis.__bridgeResumeCalls.push({ target, prompt });
+}
+`
+      ],
+      [
+        /async function sendTextMessage\(baseUrl, token, toUserId, text, contextToken, clientId = ""\) \{[\s\S]*?\n\}/,
+        `async function sendTextMessage(baseUrl, token, toUserId, text) {
+  globalThis.__bridgeSentTexts = globalThis.__bridgeSentTexts || [];
+  globalThis.__bridgeSentTexts.push({ toUserId, text });
+}
+`
+      ]
+    ]
+  });
+
+  globalThis.__bridgeSenderStateStore = {
+    "user@im.wechat": {
+      senderId: "user@im.wechat",
+      accountId: "bot-1",
+      contextToken: "ctx-token",
+      history: [],
+      recentFingerprints: [],
+      recentPromptSubmissions: [],
+      lastError: null,
+      lastNotifiedThreadId: "thread-recent-1",
+      lastNotifiedCwd: "/tmp/project-b",
+      lastNotifiedTurnId: "turn-recent-1",
+      lastNotifiedKind: "complete",
+      lastNotifiedAt: "2026-03-31T00:00:20.000Z",
+      lastNotificationTitle: "线程 B",
+      lastNotificationPrompt: "上一轮提示词"
+    }
+  };
+  globalThis.__bridgeResumeCalls = [];
+  globalThis.__bridgeSentTexts = [];
+
+  const prompt = "检查 README 的前置条件是否多余";
+  await bridge.processIncomingMessage(
+    { ...bridge.DEFAULT_CONFIG },
+    {
+      accountId: "bot-1",
+      token: "token",
+      baseUrl: "https://example.com"
+    },
+    {
+      from_user_id: "user@im.wechat",
+      context_token: "ctx-token-ipad",
+      client_id: "ipad-client",
+      item_list: [{ type: 1, text_item: { text: prompt } }]
+    }
+  );
+
+  await bridge.processIncomingMessage(
+    { ...bridge.DEFAULT_CONFIG },
+    {
+      accountId: "bot-1",
+      token: "token",
+      baseUrl: "https://example.com"
+    },
+    {
+      from_user_id: "user@im.wechat",
+      context_token: "ctx-token-iphone",
+      client_id: "iphone-client",
+      item_list: [{ type: 1, text_item: { text: prompt } }]
+    }
+  );
+
+  assert.equal(globalThis.__bridgeResumeCalls.length, 1);
+  assert.equal(globalThis.__bridgeResumeCalls[0]?.prompt, prompt);
+  assert.equal(globalThis.__bridgeSentTexts.length, 0);
+});
+
+test("processIncomingMessage does not suppress the same prompt when the target thread changed", async () => {
+  const bridge = await loadBridgeForTests({
+    replacements: [
+      ...senderStateStoreReplacements(),
+      [
+        /async function runCodexResumePrompt\(config, target, prompt\) \{[\s\S]*?\n\}/,
+        `async function runCodexResumePrompt(config, target, prompt) {
+  globalThis.__bridgeResumeCalls = globalThis.__bridgeResumeCalls || [];
+  globalThis.__bridgeResumeCalls.push({ target, prompt });
+}
+`
+      ]
+    ]
+  });
+
+  globalThis.__bridgeSenderStateStore = {
+    "user@im.wechat": {
+      senderId: "user@im.wechat",
+      accountId: "bot-1",
+      contextToken: "ctx-token",
+      history: [],
+      recentFingerprints: [],
+      recentPromptSubmissions: [],
+      lastError: null,
+      lastNotifiedThreadId: "thread-a",
+      lastNotifiedCwd: "/tmp/project-a",
+      lastNotifiedTurnId: "turn-a",
+      lastNotifiedKind: "complete",
+      lastNotifiedAt: "2026-03-31T00:00:20.000Z",
+      lastNotificationTitle: "线程 A",
+      lastNotificationPrompt: "上一轮提示词"
+    }
+  };
+  globalThis.__bridgeResumeCalls = [];
+
+  const prompt = "请继续执行同一个提示词";
+  await bridge.processIncomingMessage(
+    { ...bridge.DEFAULT_CONFIG },
+    {
+      accountId: "bot-1",
+      token: "token",
+      baseUrl: "https://example.com"
+    },
+    {
+      from_user_id: "user@im.wechat",
+      context_token: "ctx-token",
+      client_id: "device-a",
+      item_list: [{ type: 1, text_item: { text: prompt } }]
+    }
+  );
+
+  globalThis.__bridgeSenderStateStore["user@im.wechat"].lastNotifiedThreadId = "thread-b";
+  globalThis.__bridgeSenderStateStore["user@im.wechat"].lastNotifiedCwd = "/tmp/project-b";
+
+  await bridge.processIncomingMessage(
+    { ...bridge.DEFAULT_CONFIG },
+    {
+      accountId: "bot-1",
+      token: "token",
+      baseUrl: "https://example.com"
+    },
+    {
+      from_user_id: "user@im.wechat",
+      context_token: "ctx-token",
+      client_id: "device-b",
+      item_list: [{ type: 1, text_item: { text: prompt } }]
+    }
+  );
+
+  assert.deepEqual(globalThis.__bridgeResumeCalls, [
+    {
+      target: {
+        threadId: "thread-a",
+        cwd: "/tmp/project-a"
+      },
+      prompt
+    },
+    {
+      target: {
+        threadId: "thread-b",
+        cwd: "/tmp/project-b"
+      },
+      prompt
+    }
+  ]);
+});
+
+test("runCodexResumePrompt keeps waiting for rollout confirmation beyond the old 12 second window", async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "bridge-rollout-slow-"));
+  const rolloutPath = path.join(tempDir, "rollout.jsonl");
+  await fs.writeFile(rolloutPath, "", "utf8");
+
+  const bridge = await loadBridgeForTests({
+    replacements: [
+      [
+        /import \{ spawn, spawnSync \} from "node:child_process";/,
+        `const spawn = (...args) => globalThis.__bridgeSpawnMock(...args);
+const spawnSync = (...args) => globalThis.__bridgeSpawnSyncMock(...args);`
+      ],
+      [
+        /function findThreadById\(threadId\) \{[\s\S]*?\n\}/,
+        `function findThreadById(threadId) {
+  return threadId === "thread-ui-submit-slow"
+    ? {
+        id: "thread-ui-submit-slow",
+        cwd: "/tmp",
+        title: "slow thread",
+        archived: 0,
+        rolloutPath: globalThis.__bridgeRolloutPath
+      }
+    : null;
+}
+`
+      ],
+      [
+        /Date\.now\(\)/g,
+        "globalThis.__bridgeNow()"
+      ],
+      [
+        /function sleep\(ms\) \{[\s\S]*?\n\}/,
+        `function sleep() {
+  globalThis.__bridgeSleepCallCount = (globalThis.__bridgeSleepCallCount || 0) + 1;
+  globalThis.__bridgeFakeNow += 15000;
+  if (globalThis.__bridgeSleepCallCount === 2) {
+    fs.appendFileSync(
+      globalThis.__bridgeRolloutPath,
+      [
+        '{"timestamp":"2026-03-31T00:00:20.000Z","type":"event_msg","payload":{"type":"user_message","message":"慢一点的提交确认","images":[],"local_images":[],"text_elements":[]}}',
+        '{"timestamp":"2026-03-31T00:00:20.100Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-slow","model_context_window":258400,"collaboration_mode_kind":"default"}}'
+      ].join("\\n") + "\\n",
+      "utf8"
+    );
+  }
+  return Promise.resolve();
+}
+`
+      ]
+    ]
+  });
+
+  globalThis.__bridgeRolloutPath = rolloutPath;
+  globalThis.__bridgeFakeNow = 0;
+  globalThis.__bridgeNow = () => globalThis.__bridgeFakeNow;
+  globalThis.__bridgeSleepCallCount = 0;
+  globalThis.__bridgeSpawnMock = () => {
+    throw new Error("spawn should not be used for desktop prompt submission");
+  };
+  globalThis.__bridgeSpawnSyncMock = (command, args, options) => {
+    if (command === "ps") {
+      return {
+        status: 0,
+        stdout: "123 /Applications/Codex.app/Contents/MacOS/Codex\\n",
+        stderr: ""
+      };
+    }
+    if (
+      command === "osascript" &&
+      Array.isArray(args) &&
+      args.some((value) => String(value).includes('UI elements enabled'))
+    ) {
+      return { status: 0, stdout: "true\\n", stderr: "" };
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
+
+  await assert.doesNotReject(
+    bridge.runCodexResumePrompt(
+      { ...bridge.DEFAULT_CONFIG },
+      {
+        threadId: "thread-ui-submit-slow",
+        cwd: "/tmp"
+      },
+      "慢一点的提交确认"
+    )
+  );
 });
