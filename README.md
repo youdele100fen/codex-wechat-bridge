@@ -50,11 +50,15 @@ cd codex-wechat-bridge
 - `codex-wechat`
 - `codex-wechat-bridge`
 
-### Step 3：登录或刷新微信通道
+### Step 3：登录或刷新微信通道，并自动启动桥接
 
 ```bash
 codex-wechat setup
 ```
+
+这条命令现在会先自动停掉当前正在运行的 `codex-wechat` 相关进程，再复用或刷新微信凭证，最后直接进入桥接运行态。
+
+如果命令成功，你会继续停留在前台运行状态；需要退出时按 `Ctrl+C`。
 
 ### Step 4：检查环境
 
@@ -62,7 +66,7 @@ codex-wechat setup
 codex-wechat doctor
 ```
 
-### Step 5：启动桥接
+### Step 5：如果你之后手动退出过，再重新启动桥接
 
 ```bash
 codex-wechat start
@@ -96,6 +100,12 @@ codex-wechat setup
 ```
 
 它内部同样会复用或触发 `claude-code-wechat-channel setup`。
+
+同时，`codex-wechat setup` 现在还会：
+
+- 先自动停掉当前正在运行的 `codex-wechat` 相关进程
+- setup 成功后直接进入桥接运行态
+- 保持前台运行，直到你按 `Ctrl+C` 退出
 
 这意味着：
 
@@ -147,6 +157,8 @@ codex-wechat setup
 codex-wechat setup --workspace "/path/to/your/project"
 ```
 
+它同样会在 setup 成功后直接进入前台运行状态。
+
 `doctor` 第一次重点看这几项：
 
 - `WeChat credentials`
@@ -154,7 +166,9 @@ codex-wechat setup --workspace "/path/to/your/project"
 - `macOS Accessibility automation available`
 - `Monitor status`
 
-日常使用时，一般只需要保持一个 `codex-wechat start` 进程。
+日常使用时，一般只需要保持一个桥接进程。
+
+第一次通常直接运行 `codex-wechat setup`；如果你后来手动退出了桥接，再用 `codex-wechat start` 重新拉起即可。
 
 ## 第一次怎么验证成功
 

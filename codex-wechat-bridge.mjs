@@ -28,9 +28,12 @@ const MAX_SENT_DELIVERY_KEYS = 1000;
 const MAX_RECENT_PROMPT_SUBMISSIONS = 20;
 const PROMPT_RESUME_STARTUP_WAIT_MS = 2000;
 const DESKTOP_THREAD_OPEN_SETTLE_MS = 2000;
-const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = 90000;
+const PROMPT_SUBMISSION_OBSERVE_TIMEOUT_MS = 10000;
 const PROMPT_SUBMISSION_POLL_MS = 250;
 const PROMPT_SEMANTIC_DEDUPE_WINDOW_MS = 120000;
+const PROCESS_STOP_GRACE_MS = 5000;
+const PROCESS_STOP_FORCE_MS = 5000;
+const PROCESS_STOP_POLL_MS = 250;
 const PROMPT_TARGET_REQUIRED_MESSAGE = "当前还没有可续接的 Codex 任务。请先在 Codex 中完成一次任务并收到通知后，再从微信发送 Prompt。";
 const DEFAULT_CONFIG = {
   workspace: DEFAULT_WORKSPACE,
@@ -43,7 +46,8 @@ const DEFAULT_CONFIG = {
   baseUrl: DEFAULT_BASE_URL,
   monitorAllProjects: true,
   monitorPollMs: 5000,
-  notifyMaxChars: 700
+  notifyMaxChars: 700,
+  notifyCommentary: false
 };
 
 const HOME = os.homedir();
@@ -57,10 +61,10 @@ const LEGACY_CREDENTIALS_FILE = path.join(HOME, ".claude", "channels", "wechat",
 const usage = `Usage: ${BRIDGE_NAME} <command> [options]
 
 Commands:
-  setup              Reuse or refresh WeChat credentials and write default config
+  setup              Stop related processes, reuse or refresh WeChat credentials, then start the bridge
   doctor             Run environment and connectivity checks
   start              Start the long-poll chat bridge
-  monitor            Watch Codex threads and notify WeChat when tasks complete
+  monitor            Watch Codex threads and notify WeChat for final answers and task completion
   help               Show this help
 
 Options:
@@ -187,6 +191,7 @@ function normalizeActiveTurn(turn = {}) {
         ? 1
         : 0,
     lastAssistantText: typeof turn?.lastAssistantText === "string" ? turn.lastAssistantText : "",
+    lastAssistantPhase: typeof turn?.lastAssistantPhase === "string" ? turn.lastAssistantPhase : "",
     lastUserPrompt: typeof turn?.lastUserPrompt === "string" ? turn.lastUserPrompt : ""
   };
 }
@@ -207,6 +212,7 @@ function normalizePendingNotification(notification = {}) {
         ? 1
         : 0,
     reason: typeof notification?.reason === "string" ? notification.reason : "",
+    responseType: notification?.responseType === "ask" || notification?.responseType === "plan" ? notification.responseType : "result",
     attempts: Number.isFinite(notification?.attempts) ? notification.attempts : 0,
     lastAttemptAt: typeof notification?.lastAttemptAt === "string" ? notification.lastAttemptAt : "",
     error: typeof notification?.error === "string" ? notification.error : ""
@@ -1171,6 +1177,97 @@ function runCommandSync(command, args) {
   });
 }
 
+function isMissingProcessResult(result) {
+  const output = `${result?.stderr || ""}\n${result?.stdout || ""}`.trim();
+  return /no such process/i.test(output);
+}
+
+function selectManagedProcessesToStop(processes, currentPid = null) {
+  return processes.filter(
+    (processInfo) =>
+      processInfo &&
+      Number.isFinite(processInfo.pid) &&
+      processInfo.pid > 0 &&
+      processInfo.pid !== currentPid
+  );
+}
+
+function filterManagedProcessesByPid(processes, targetPidSet) {
+  return processes.filter((processInfo) => targetPidSet.has(processInfo.pid));
+}
+
+async function waitForManagedProcessesExit(targets, options = {}) {
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Math.max(0, options.timeoutMs) : PROCESS_STOP_GRACE_MS;
+  const pollMs = Number.isFinite(options.pollMs) ? Math.max(0, options.pollMs) : PROCESS_STOP_POLL_MS;
+  const listProcesses = options.listProcesses ?? listRelatedProcesses;
+  const wait = options.wait ?? sleep;
+  const now = options.now ?? Date.now;
+  const deadline = now() + timeoutMs;
+  const targetPidSet = new Set(targets.map((processInfo) => processInfo.pid));
+  let remaining = filterManagedProcessesByPid(listProcesses(), targetPidSet);
+
+  while (remaining.length && now() < deadline) {
+    await wait(pollMs);
+    remaining = filterManagedProcessesByPid(listProcesses(), targetPidSet);
+  }
+
+  return remaining;
+}
+
+async function stopManagedProcesses(processes, options = {}) {
+  const currentPid = options.currentPid ?? process.pid;
+  const graceMs = Number.isFinite(options.graceMs) ? Math.max(0, options.graceMs) : PROCESS_STOP_GRACE_MS;
+  const forceMs = Number.isFinite(options.forceMs) ? Math.max(0, options.forceMs) : PROCESS_STOP_FORCE_MS;
+  const pollMs = Number.isFinite(options.pollMs) ? Math.max(0, options.pollMs) : PROCESS_STOP_POLL_MS;
+  const runCommand = options.runCommand ?? runCommandSync;
+  const listProcesses = options.listProcesses ?? listRelatedProcesses;
+  const wait = options.wait ?? sleep;
+  const now = options.now ?? Date.now;
+  const targets = selectManagedProcessesToStop(processes, currentPid);
+
+  if (!targets.length) {
+    return [];
+  }
+
+  for (const processInfo of targets) {
+    const result = runCommand("kill", ["-TERM", String(processInfo.pid)]);
+    if (result.status !== 0 && !isMissingProcessResult(result)) {
+      throw new Error(`failed to stop related process ${processInfo.pid}: ${(result.stderr || result.stdout || "kill -TERM failed").trim()}`);
+    }
+  }
+
+  let remaining = await waitForManagedProcessesExit(targets, {
+    timeoutMs: graceMs,
+    pollMs,
+    listProcesses,
+    wait,
+    now
+  });
+  if (!remaining.length) {
+    return targets;
+  }
+
+  for (const processInfo of remaining) {
+    const result = runCommand("kill", ["-KILL", String(processInfo.pid)]);
+    if (result.status !== 0 && !isMissingProcessResult(result)) {
+      throw new Error(`failed to force-stop related process ${processInfo.pid}: ${(result.stderr || result.stdout || "kill -KILL failed").trim()}`);
+    }
+  }
+
+  remaining = await waitForManagedProcessesExit(remaining, {
+    timeoutMs: forceMs,
+    pollMs,
+    listProcesses,
+    wait,
+    now
+  });
+  if (remaining.length) {
+    throw new Error(`timed out while stopping related processes: ${describeProcesses(remaining)}`);
+  }
+
+  return targets;
+}
+
 function findThreadById(threadId) {
   if (!threadId) {
     return null;
@@ -1206,6 +1303,13 @@ function isGitWorkTree(cwd) {
 
 function detectManagedProcess(command) {
   if (
+    /\bclaude-code-wechat-channel\b/.test(command) &&
+    /(^|\s)(setup|login)(\s|$)/.test(command)
+  ) {
+    return { kind: "setup", roles: ["setup"] };
+  }
+
+  if (
     command.includes("/node_modules/claude-code-wechat-channel/dist/wechat-channel.js")
   ) {
     return { kind: "legacy", roles: ["consumer"] };
@@ -1221,6 +1325,10 @@ function detectManagedProcess(command) {
 
   if (/(^|\s)monitor(\s|$)/.test(command)) {
     return { kind: "monitor", roles: ["monitor"] };
+  }
+
+  if (/(^|\s)setup(\s|$)/.test(command)) {
+    return { kind: "setup", roles: ["setup", "consumer", "monitor"] };
   }
 
   return null;
@@ -1310,7 +1418,9 @@ function describeMonitorScope(config) {
 }
 
 function describeNotificationRules(config) {
-  return "success when task_complete is observed; aborted turns notify only when reason != interrupted";
+  return config.notifyCommentary === true
+    ? "assistant final answers notify immediately; commentary can notify when enabled; task_complete is the fallback; aborted turns notify only when reason != interrupted"
+    : "assistant final answers notify immediately; task_complete is the fallback; commentary is muted by default; aborted turns notify only when reason != interrupted";
 }
 
 function describePromptSubmissionBackend() {
@@ -1474,7 +1584,7 @@ function formatLocalTime(value) {
 }
 
 function extractAssistantTextFromResponseItem(payload) {
-  if (payload?.type !== "message" || payload?.role !== "assistant" || payload?.phase === "commentary") {
+  if (payload?.type !== "message" || payload?.role !== "assistant") {
     return "";
   }
 
@@ -1485,6 +1595,59 @@ function extractAssistantTextFromResponseItem(payload) {
     }
   }
   return texts.join("\n").trim();
+}
+
+function inferNotificationResponseType(text) {
+  const source = String(text || "").trim();
+  if (!source) {
+    return "result";
+  }
+
+  if (/<proposed_plan>/i.test(source) || /\bimplementation plan\b/i.test(source) || /计划|方案/.test(source)) {
+    return "plan";
+  }
+
+  if (
+    /[?？]/.test(source) ||
+    /(^|\n)\s*`?[A-Z]`?\s/.test(source) ||
+    /(^|\n)\s*[A-Z]\./.test(source) ||
+    /你希望|请选择|which approach|which option|would you like/i.test(source)
+  ) {
+    return "ask";
+  }
+
+  return "result";
+}
+
+function resolveCompletionSummarySource(taskCompletePayload, activeTurn, fallbackText = "") {
+  return taskCompletePayload?.last_agent_message || fallbackText || activeTurn?.lastAssistantText || "任务已完成。";
+}
+
+function shouldQueueAssistantNotification(config, phase) {
+  return phase === "final_answer" || (phase === "commentary" && config.notifyCommentary === true);
+}
+
+function getTurnIdForAssistantPayload(threadState, payload) {
+  const payloadTurnId = typeof payload?.turn_id === "string" ? payload.turn_id : "";
+  if (payloadTurnId && threadState.activeTurns?.[payloadTurnId]) {
+    return payloadTurnId;
+  }
+  return threadState.currentTurnId || payloadTurnId;
+}
+
+function captureAssistantTurnState(threadState, turnId, text, phase) {
+  if (!turnId || !threadState.activeTurns?.[turnId]) {
+    return null;
+  }
+
+  const activeTurn = threadState.activeTurns[turnId];
+  if (typeof phase === "string" && phase) {
+    activeTurn.lastAssistantPhase = phase;
+  }
+  if (text) {
+    activeTurn.lastAssistantText = text;
+  }
+  return activeTurn;
 }
 
 function extractUserTextFromResponseItem(payload) {
@@ -1499,11 +1662,6 @@ function extractUserTextFromResponseItem(payload) {
     }
   }
   return texts.join("\n").trim();
-}
-
-function buildCompletionSummary(taskCompletePayload, activeTurn, config) {
-  const summarySource = taskCompletePayload?.last_agent_message || activeTurn?.lastAssistantText || "任务已完成。";
-  return plainTextReply(summarySource, config.notifyMaxChars);
 }
 
 function buildAbortedSummary(activeTurn, config) {
@@ -1537,14 +1695,27 @@ function buildMonitorMessage(thread, notification, config) {
   }
 
   const summary = plainTextReply(notification.summary || "任务已完成。", config.notifyMaxChars);
+  const responseType = notification.responseType === "ask" || notification.responseType === "plan"
+    ? notification.responseType
+    : "result";
+  const title = responseType === "ask"
+    ? "Codex 提问通知"
+    : responseType === "plan"
+      ? "Codex 计划通知"
+      : "Codex 结果通知";
+  const summaryLabel = responseType === "ask"
+    ? "提问"
+    : responseType === "plan"
+      ? "计划"
+      : "结果";
   return plainTextReply(
     [
-      "Codex 任务完成通知",
+      title,
       `Project：${projectLabel}`,
       `Thread：${threadLabel}`,
       `Prompt：${promptLabel}`,
       `完成时间：${formatLocalTime(notification.completedAt)}`,
-      `结果：${summary}`
+      `${summaryLabel}：${summary}`
     ].join("\n"),
     Math.min(config.maxReplyChars, config.notifyMaxChars + 160)
   );
@@ -1654,7 +1825,31 @@ function shouldNotifyAborted(payload) {
   return String(payload?.reason || "").trim() !== "interrupted";
 }
 
-function queueCompletionNotification(config, thread, threadState, payload, activeTurn, completedAt) {
+function queueAssistantMessageNotification(config, thread, threadState, turnId, activeTurn, phase, text, completedAt) {
+  if (!turnId || !activeTurn || !shouldQueueAssistantNotification(config, phase)) {
+    return null;
+  }
+
+  const summarySource = String(text || activeTurn.lastAssistantText || "").trim();
+  if (!summarySource) {
+    return null;
+  }
+
+  return queueCompletionNotification(
+    config,
+    thread,
+    threadState,
+    { turn_id: turnId, type: "task_complete" },
+    activeTurn,
+    completedAt,
+    {
+      summary: summarySource,
+      responseType: inferNotificationResponseType(summarySource)
+    }
+  );
+}
+
+function queueCompletionNotification(config, thread, threadState, payload, activeTurn, completedAt, overrides = {}) {
   const turnId = payload?.turn_id || "";
   if (!turnId || threadState.notifiedTurnIds.includes(turnId) || threadState.pendingNotifications?.[turnId]) {
     return null;
@@ -1664,6 +1859,7 @@ function queueCompletionNotification(config, thread, threadState, payload, activ
   const completedAtMs = toEpochMs(completedAt);
   const durationMs = startedAtMs && completedAtMs && completedAtMs >= startedAtMs ? completedAtMs - startedAtMs : 0;
   const toolCallCount = Number.isFinite(activeTurn?.toolCallCount) ? activeTurn.toolCallCount : 0;
+  const summarySource = resolveCompletionSummarySource(payload, activeTurn, overrides.summary);
 
   const notification = normalizePendingNotification({
     kind: "complete",
@@ -1671,10 +1867,11 @@ function queueCompletionNotification(config, thread, threadState, payload, activ
     deliveryKey: buildNotificationDeliveryKey(thread.id, { kind: "complete", turnId }),
     threadTitle: thread.title || "",
     completedAt: completedAt || new Date().toISOString(),
-    summary: buildCompletionSummary(payload, activeTurn, config),
+    summary: plainTextReply(summarySource, config.notifyMaxChars),
     prompt: activeTurn?.lastUserPrompt || "",
     durationMs,
-    toolCallCount
+    toolCallCount,
+    responseType: overrides.responseType || inferNotificationResponseType(summarySource)
   });
 
   threadState.pendingNotifications[turnId] = notification;
@@ -1753,10 +1950,41 @@ function processRolloutRecord(config, thread, threadState, record) {
     }
 
     const assistantText = extractAssistantTextFromResponseItem(payload);
-    if (!assistantText) {
+    const turnId = getTurnIdForAssistantPayload(threadState, payload);
+    const activeTurn = captureAssistantTurnState(threadState, turnId, assistantText, payload.phase || "");
+    if (!assistantText && !activeTurn) {
       return;
     }
-    threadState.activeTurns[threadState.currentTurnId].lastAssistantText = assistantText;
+    queueAssistantMessageNotification(
+      config,
+      thread,
+      threadState,
+      turnId,
+      activeTurn,
+      payload.phase || "",
+      assistantText,
+      record.timestamp || new Date().toISOString()
+    );
+    return;
+  }
+
+  if (record?.type === "event_msg" && payload.type === "agent_message") {
+    const turnId = getTurnIdForAssistantPayload(threadState, payload);
+    const assistantText = String(payload.message || "").trim();
+    const activeTurn = captureAssistantTurnState(threadState, turnId, assistantText, payload.phase || "");
+    if (!activeTurn) {
+      return;
+    }
+    queueAssistantMessageNotification(
+      config,
+      thread,
+      threadState,
+      turnId,
+      activeTurn,
+      payload.phase || "",
+      assistantText,
+      record.timestamp || new Date().toISOString()
+    );
     return;
   }
 
@@ -1850,35 +2078,54 @@ async function scanThreadsAndNotify(config, credentials, monitorState) {
   }
 }
 
-async function setupCommand(options) {
-  ensureStateDirs();
-  const config = loadConfig();
+async function setupCommand(options, hooks = {}) {
+  const ensureStateDirsFn = hooks.ensureStateDirsFn ?? ensureStateDirs;
+  const loadConfigFn = hooks.loadConfigFn ?? loadConfig;
+  const saveConfigFn = hooks.saveConfigFn ?? saveConfig;
+  const loadCredentialsFn = hooks.loadCredentialsFn ?? loadCredentials;
+  const listProcessesFn = hooks.listProcessesFn ?? listRelatedProcesses;
+  const stopProcessesFn = hooks.stopProcessesFn ?? stopManagedProcesses;
+  const setupRunnerFn = hooks.setupRunnerFn ?? (async () => {
+    log("running WeChat QR login via claude-code-wechat-channel setup");
+    const status = spawnSync("npx", ["-y", "claude-code-wechat-channel", "setup"], {
+      stdio: "inherit",
+      env: process.env
+    });
+    if (status.status !== 0) {
+      throw new Error("setup failed while refreshing WeChat credentials");
+    }
+  });
+  const startFn = hooks.startFn ?? startCommand;
+  const logFn = hooks.logFn ?? log;
+
+  ensureStateDirsFn();
+  const config = loadConfigFn();
   if (options.workspace) {
     config.workspace = options.workspace;
   }
-  saveConfig(config);
+  saveConfigFn(config);
 
-  const credentials = loadCredentials();
-  if (credentials && !options.forceLogin) {
-    log(`reusing credentials for ${credentials.accountId}`);
-    log(`config saved to ${CONFIG_FILE}`);
-    return;
-  }
-
-  log("running WeChat QR login via claude-code-wechat-channel setup");
-  const status = spawnSync("npx", ["-y", "claude-code-wechat-channel", "setup"], {
-    stdio: "inherit",
-    env: process.env
+  const relatedProcesses = listProcessesFn();
+  logFn("stopping related processes");
+  await stopProcessesFn(relatedProcesses, {
+    currentPid: process.pid,
+    listProcesses: listProcessesFn
   });
-  if (status.status !== 0) {
-    fail("setup failed while refreshing WeChat credentials");
+
+  logFn("running setup");
+  const credentials = loadCredentialsFn();
+  if (credentials && !options.forceLogin) {
+    logFn(`reusing credentials for ${credentials.accountId}`);
+  } else {
+    await setupRunnerFn();
+    const refreshedCredentials = loadCredentialsFn();
+    if (!refreshedCredentials) {
+      throw new Error(`setup finished but no credentials were found at ${LEGACY_CREDENTIALS_FILE}`);
+    }
   }
 
-  if (!loadCredentials()) {
-    fail(`setup finished but no credentials were found at ${LEGACY_CREDENTIALS_FILE}`);
-  }
-
-  log(`credentials refreshed and config saved to ${CONFIG_FILE}`);
+  logFn("setup succeeded, starting bridge");
+  await startFn(options);
 }
 
 async function doctorCommand(options) {
@@ -2349,7 +2596,7 @@ async function monitorCommand(options) {
   } else {
     log(`monitor check: ${describeProcesses(monitorProcessState.relevant)}`);
   }
-  log("watching Codex thread completions...");
+  log("watching Codex thread answers and completions...");
 
   let shouldStop = false;
   const stop = () => {

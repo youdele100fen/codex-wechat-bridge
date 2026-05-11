@@ -23,6 +23,7 @@ export {
   normalizeActiveTurn,
   normalizePendingNotification,
   queueCompletionNotification,
+  stopManagedProcesses,
   flushPendingNotifications,
   processRolloutRecord,
   buildMonitorMessage,
@@ -39,6 +40,7 @@ export {
   sendTextMessage,
   sendMonitorNotification,
   processIncomingMessage,
+  setupCommand,
   extractTextFromMessage,
   buildDesktopThreadOpenArgs
 };
@@ -268,7 +270,7 @@ test("success notification includes project thread and command fields", async ()
 
   const message = bridge.buildMonitorMessage(thread, notification, config);
 
-  assert.match(message, /Codex 任务完成通知/);
+  assert.match(message, /Codex 结果通知/);
   assert.match(message, /Project：sample-project-a/);
   assert.match(message, /Thread：请只回复：dupfix-test-real-once/);
   assert.match(message, /Prompt：请只回复：dupfix-test-real-once/);
@@ -403,6 +405,163 @@ test("completion notification uses the latest turn prompt instead of thread firs
   assert.match(message, /Thread：hello2/);
   assert.match(message, /Prompt：告诉我圆周率20位/);
   assert.ok(!message.includes("Prompt：hello2"));
+});
+
+test("final_answer queues a plan notification before task_complete and task_complete does not duplicate it", async () => {
+  const bridge = await loadBridgeForTests();
+  const config = { ...bridge.DEFAULT_CONFIG };
+  const thread = {
+    id: "thread-plan-1",
+    cwd: "/tmp/project-plan",
+    title: "bridge notification fix"
+  };
+  const threadState = {
+    notifiedTurnIds: [],
+    pendingNotifications: {},
+    activeTurns: {
+      "turn-plan-1": bridge.normalizeActiveTurn({
+        startedAt: "2026-03-31T00:00:00.000Z",
+        toolCallCount: 2,
+        lastUserPrompt: "执行通知修复方案"
+      })
+    },
+    currentTurnId: "turn-plan-1"
+  };
+
+  bridge.processRolloutRecord(config, thread, threadState, {
+    type: "event_msg",
+    timestamp: "2026-03-31T00:00:03.000Z",
+    payload: {
+      type: "agent_message",
+      phase: "final_answer",
+      message: "<proposed_plan>\n# Bridge Notification Plan\n\n1. Capture final answers immediately."
+    }
+  });
+
+  const queuedAfterFinalAnswer = threadState.pendingNotifications["turn-plan-1"];
+  assert.ok(queuedAfterFinalAnswer);
+  assert.equal(queuedAfterFinalAnswer.responseType, "plan");
+
+  bridge.processRolloutRecord(config, thread, threadState, {
+    type: "event_msg",
+    timestamp: "2026-03-31T00:00:04.000Z",
+    payload: {
+      type: "task_complete",
+      turn_id: "turn-plan-1",
+      last_agent_message: "task_complete fallback should not overwrite the queued plan"
+    }
+  });
+
+  assert.deepEqual(Object.keys(threadState.pendingNotifications), ["turn-plan-1"]);
+  assert.equal(threadState.pendingNotifications["turn-plan-1"].responseType, "plan");
+  assert.match(
+    bridge.buildMonitorMessage(thread, threadState.pendingNotifications["turn-plan-1"], config),
+    /Codex 计划通知/
+  );
+});
+
+test("task_complete falls back to the latest assistant question and classifies it as ask", async () => {
+  const bridge = await loadBridgeForTests();
+  const config = { ...bridge.DEFAULT_CONFIG };
+  const thread = {
+    id: "thread-ask-1",
+    cwd: "/tmp/project-ask",
+    title: "question turn"
+  };
+  const threadState = {
+    notifiedTurnIds: [],
+    pendingNotifications: {},
+    activeTurns: {
+      "turn-ask-1": bridge.normalizeActiveTurn({
+        startedAt: "2026-03-31T00:00:00.000Z",
+        toolCallCount: 0,
+        lastUserPrompt: "继续下一步"
+      })
+    },
+    currentTurnId: "turn-ask-1"
+  };
+
+  bridge.processRolloutRecord(config, thread, threadState, {
+    type: "event_msg",
+    timestamp: "2026-03-31T00:00:05.000Z",
+    payload: {
+      type: "agent_message",
+      phase: "commentary",
+      message: "下一步最关键的一点是：你希望我们优先修哪条路径？\nA. 只修 final_answer\nB. 连 task_complete 也一起收口"
+    }
+  });
+
+  assert.deepEqual(threadState.pendingNotifications, {});
+
+  bridge.processRolloutRecord(config, thread, threadState, {
+    type: "event_msg",
+    timestamp: "2026-03-31T00:00:06.000Z",
+    payload: {
+      type: "task_complete",
+      turn_id: "turn-ask-1",
+      last_agent_message: ""
+    }
+  });
+
+  const queued = threadState.pendingNotifications["turn-ask-1"];
+  assert.ok(queued);
+  assert.equal(queued.responseType, "ask");
+  assert.match(queued.summary, /优先修哪条路径/);
+  assert.match(bridge.buildMonitorMessage(thread, queued, config), /Codex 提问通知/);
+});
+
+test("result ask and plan notifications use distinct message labels", async () => {
+  const bridge = await loadBridgeForTests();
+  const config = { ...bridge.DEFAULT_CONFIG };
+  const thread = {
+    id: "thread-types-1",
+    cwd: "/tmp/project-types",
+    title: "typed notifications"
+  };
+
+  const resultMessage = bridge.buildMonitorMessage(
+    thread,
+    bridge.normalizePendingNotification({
+      kind: "complete",
+      turnId: "turn-result",
+      completedAt: "2026-03-31T00:00:20.000Z",
+      summary: "修复已经完成。",
+      prompt: "执行修复",
+      responseType: "result"
+    }),
+    config
+  );
+  const askMessage = bridge.buildMonitorMessage(
+    thread,
+    bridge.normalizePendingNotification({
+      kind: "complete",
+      turnId: "turn-ask",
+      completedAt: "2026-03-31T00:00:20.000Z",
+      summary: "你希望先验证哪一个场景？",
+      prompt: "继续",
+      responseType: "ask"
+    }),
+    config
+  );
+  const planMessage = bridge.buildMonitorMessage(
+    thread,
+    bridge.normalizePendingNotification({
+      kind: "complete",
+      turnId: "turn-plan",
+      completedAt: "2026-03-31T00:00:20.000Z",
+      summary: "<proposed_plan>\n# Fix Plan",
+      prompt: "制定方案",
+      responseType: "plan"
+    }),
+    config
+  );
+
+  assert.match(resultMessage, /Codex 结果通知/);
+  assert.match(resultMessage, /结果：修复已经完成/);
+  assert.match(askMessage, /Codex 提问通知/);
+  assert.match(askMessage, /提问：你希望先验证哪一个场景/);
+  assert.match(planMessage, /Codex 计划通知/);
+  assert.match(planMessage, /计划：<proposed_plan>/);
 });
 
 test("successful notification persists monitor state immediately after send", async () => {
@@ -562,6 +721,37 @@ test("detectManagedProcess recognizes codex-wechat alias start commands", async 
   });
 });
 
+test("detectManagedProcess recognizes claude-code-wechat-channel setup and login commands", async () => {
+  const bridge = await loadBridgeForTests();
+
+  assert.deepEqual(
+    bridge.detectManagedProcess("npx -y claude-code-wechat-channel setup"),
+    {
+      kind: "setup",
+      roles: ["setup"]
+    }
+  );
+  assert.deepEqual(
+    bridge.detectManagedProcess("node /opt/bin/claude-code-wechat-channel login"),
+    {
+      kind: "setup",
+      roles: ["setup"]
+    }
+  );
+});
+
+test("detectManagedProcess treats codex-wechat setup as the running bridge lifecycle process", async () => {
+  const bridge = await loadBridgeForTests();
+
+  assert.deepEqual(
+    bridge.detectManagedProcess("node /opt/codex/bin/codex-wechat setup --force-login"),
+    {
+      kind: "setup",
+      roles: ["setup", "consumer", "monitor"]
+    }
+  );
+});
+
 test("classifyConsumerState counts codex-wechat alias instances as bridge conflicts", async () => {
   const bridge = await loadBridgeForTests();
 
@@ -597,6 +787,198 @@ test("classifyConsumerState counts codex-wechat alias instances as bridge confli
 
   assert.equal(stateWithCurrentPid.hasConflict, true);
   assert.equal(stateWithCurrentPid.bridge.length, 1);
+});
+
+test("classifyMonitorState treats codex-wechat setup lifecycle as a running monitor", async () => {
+  const bridge = await loadBridgeForTests();
+
+  const state = bridge.classifyMonitorState([
+    {
+      pid: 1003,
+      command: "node /opt/codex/bin/codex-wechat setup --force-login",
+      kind: "setup",
+      roles: ["setup", "consumer", "monitor"]
+    }
+  ]);
+
+  assert.equal(state.hasRunning, true);
+  assert.equal(state.hasConflict, false);
+});
+
+test("stopManagedProcesses sends SIGTERM then SIGKILL after the grace window and skips current pid", async () => {
+  const bridge = await loadBridgeForTests();
+  const signals = [];
+  const sleeps = [];
+  let now = 0;
+  let pollCount = 0;
+  const targetProcess = {
+    pid: 2001,
+    command: "node /opt/codex/bin/codex-wechat start",
+    kind: "bridge",
+    roles: ["consumer", "monitor"]
+  };
+  const currentProcess = {
+    pid: 2002,
+    command: "npx -y claude-code-wechat-channel setup",
+    kind: "setup",
+    roles: ["setup"]
+  };
+
+  await bridge.stopManagedProcesses([targetProcess, currentProcess], {
+    currentPid: 2002,
+    graceMs: 5,
+    forceMs: 5,
+    pollMs: 1,
+    now: () => now,
+    wait: async (ms) => {
+      sleeps.push(ms);
+      now += 10;
+    },
+    runCommand: (command, args) => {
+      signals.push({ command, args });
+      return { status: 0, stdout: "", stderr: "" };
+    },
+    listProcesses: () => {
+      pollCount += 1;
+      return pollCount < 3 ? [targetProcess] : [];
+    }
+  });
+
+  assert.deepEqual(signals, [
+    { command: "kill", args: ["-TERM", "2001"] },
+    { command: "kill", args: ["-KILL", "2001"] }
+  ]);
+  assert.deepEqual(sleeps, [1]);
+});
+
+test("setupCommand reuses credentials, stops related processes, and then auto-starts", async () => {
+  const bridge = await loadBridgeForTests();
+  const events = [];
+  const savedConfigs = [];
+  const credentials = {
+    accountId: "acct-1",
+    baseUrl: "https://example.com",
+    token: "token-1"
+  };
+  const relatedProcesses = [
+    {
+      pid: 3001,
+      command: "node /opt/codex/bin/codex-wechat start",
+      kind: "bridge",
+      roles: ["consumer", "monitor"]
+    }
+  ];
+
+  await bridge.setupCommand(
+    { workspace: "/tmp/next-workspace" },
+    {
+      ensureStateDirsFn: () => {
+        events.push("ensure");
+      },
+      loadConfigFn: () => ({ ...bridge.DEFAULT_CONFIG, workspace: "/tmp/original" }),
+      saveConfigFn: (config) => {
+        savedConfigs.push(config);
+        events.push(`save:${config.workspace}`);
+      },
+      loadCredentialsFn: () => credentials,
+      listProcessesFn: () => {
+        events.push("list");
+        return relatedProcesses;
+      },
+      stopProcessesFn: async (processes, options) => {
+        events.push(`stop:${processes.map((processInfo) => processInfo.pid).join(",")}`);
+        assert.equal(options.currentPid, process.pid);
+      },
+      setupRunnerFn: async () => {
+        events.push("setup-runner");
+      },
+      startFn: async (options) => {
+        events.push(`start:${options.workspace}`);
+      },
+      logFn: () => {}
+    }
+  );
+
+  assert.deepEqual(events, [
+    "ensure",
+    "save:/tmp/next-workspace",
+    "list",
+    "stop:3001",
+    "start:/tmp/next-workspace"
+  ]);
+  assert.equal(savedConfigs.length, 1);
+  assert.equal(savedConfigs[0].workspace, "/tmp/next-workspace");
+});
+
+test("setupCommand refreshes credentials before auto-starting when setup login is required", async () => {
+  const bridge = await loadBridgeForTests();
+  const events = [];
+  let refreshed = false;
+
+  await bridge.setupCommand(
+    {},
+    {
+      ensureStateDirsFn: () => {
+        events.push("ensure");
+      },
+      loadConfigFn: () => ({ ...bridge.DEFAULT_CONFIG }),
+      saveConfigFn: () => {
+        events.push("save");
+      },
+      loadCredentialsFn: () => (
+        refreshed
+          ? {
+              accountId: "acct-2",
+              baseUrl: "https://example.com",
+              token: "token-2"
+            }
+          : null
+      ),
+      listProcessesFn: () => [],
+      stopProcessesFn: async () => {
+        events.push("stop");
+      },
+      setupRunnerFn: async () => {
+        refreshed = true;
+        events.push("setup-runner");
+      },
+      startFn: async () => {
+        events.push("start");
+      },
+      logFn: () => {}
+    }
+  );
+
+  assert.deepEqual(events, ["ensure", "save", "stop", "setup-runner", "start"]);
+});
+
+test("setupCommand does not auto-start when setup refresh fails", async () => {
+  const bridge = await loadBridgeForTests();
+  let started = false;
+
+  await assert.rejects(
+    bridge.setupCommand(
+      {},
+      {
+        ensureStateDirsFn: () => {},
+        loadConfigFn: () => ({ ...bridge.DEFAULT_CONFIG }),
+        saveConfigFn: () => {},
+        loadCredentialsFn: () => null,
+        listProcessesFn: () => [],
+        stopProcessesFn: async () => {},
+        setupRunnerFn: async () => {
+          throw new Error("setup refresh failed");
+        },
+        startFn: async () => {
+          started = true;
+        },
+        logFn: () => {}
+      }
+    ),
+    /setup refresh failed/
+  );
+
+  assert.equal(started, false);
 });
 
 test("extractTextFromMessage ignores quoted notification title and keeps only user text", async () => {
@@ -1304,7 +1686,7 @@ test("processIncomingMessage does not suppress the same prompt when the target t
   ]);
 });
 
-test("runCodexResumePrompt keeps waiting for rollout confirmation beyond the old 12 second window", async () => {
+test("runCodexResumePrompt fails when rollout confirmation arrives after the 10 second timeout window", async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "bridge-rollout-slow-"));
   const rolloutPath = path.join(tempDir, "rollout.jsonl");
   await fs.writeFile(rolloutPath, "", "utf8");
@@ -1382,7 +1764,7 @@ const spawnSync = (...args) => globalThis.__bridgeSpawnSyncMock(...args);`
     return { status: 0, stdout: "", stderr: "" };
   };
 
-  await assert.doesNotReject(
+  await assert.rejects(
     bridge.runCodexResumePrompt(
       { ...bridge.DEFAULT_CONFIG },
       {
@@ -1390,6 +1772,7 @@ const spawnSync = (...args) => globalThis.__bridgeSpawnSyncMock(...args);`
         cwd: "/tmp"
       },
       "慢一点的提交确认"
-    )
+    ),
+    /timeout_ms=10000/
   );
 });
